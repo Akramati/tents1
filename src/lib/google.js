@@ -1,11 +1,21 @@
 import { google } from "googleapis";
 
+// Decode private key: supports raw PEM, escaped \n, or base64
+function getPrivateKey() {
+  const raw = process.env.GOOGLE_PRIVATE_KEY || "";
+  // If it's base64 (starts with base64: prefix)
+  if (raw.startsWith("base64:")) {
+    return Buffer.from(raw.slice(7), "base64").toString("utf-8").replace(/\\n/g, "\n");
+  }
+  // Replace escaped newlines (for .env.local format)
+  return raw.replace(/\\n/g, "\n");
+}
+
 // Initialize Google Auth client
 const auth = new google.auth.GoogleAuth({
   credentials: {
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    // Replace escaped newlines in private key
-    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    private_key: getPrivateKey(),
   },
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
