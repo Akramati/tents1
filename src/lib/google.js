@@ -1,21 +1,11 @@
 import { google } from "googleapis";
 
-// Decode private key: supports raw PEM, escaped \n, or base64
-function getPrivateKey() {
-  const raw = process.env.GOOGLE_PRIVATE_KEY || "";
-  // If it's base64 (starts with base64: prefix)
-  if (raw.startsWith("base64:")) {
-    return Buffer.from(raw.slice(7), "base64").toString("utf-8").replace(/\\n/g, "\n");
-  }
-  // Replace escaped newlines (for .env.local format)
-  return raw.replace(/\\n/g, "\n");
-}
-
 // Initialize Google Auth client
 const auth = new google.auth.GoogleAuth({
   credentials: {
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: getPrivateKey(),
+    // Replace escaped newlines in private key
+    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
   },
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -29,3 +19,33 @@ export const sheets = google.sheets({ version: "v4", auth });
 export const docs = google.google?.docs?.({ version: "v1", auth }) || google.docs({ version: "v1", auth });
 export const drive = google.drive({ version: "v3", auth });
 export const calendar = google.calendar({ version: "v3", auth });
+
+export async function checkDriveQuota() {
+  try {
+    const res = await drive.about.get({ fields: "storageQuota" });
+    return res.data.storageQuota;
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+export async function getSpreadsheetInfo() {
+  try {
+    const res = await sheets.spreadsheets.get({ spreadsheetId: process.env.GOOGLE_SHEET_ID });
+    return { sheetCount: res.data.sheets?.length, title: res.data.properties?.title };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+export async function getDriveFileInfo() {
+  try {
+    const res = await drive.files.get({
+      fileId: process.env.GOOGLE_SHEET_ID,
+      fields: "owners,size",
+    });
+    return res.data;
+  } catch (e) {
+    return { error: e.message };
+  }
+}

@@ -1,14 +1,17 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import PrintProviderWrapper from "@/components/PrintProviderWrapper";
+import { AuthProvider } from "@/contexts/AuthContext";
+import AuthGuard from "@/components/AuthGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  subsets: ["latin", "arabic"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  subsets: ["latin", "arabic"],
 });
 
 export const metadata = {
@@ -19,7 +22,15 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="ar" dir="rtl" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <AuthProvider>
+          <PrintProviderWrapper>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </PrintProviderWrapper>
+        </AuthProvider>
+      </body>
     </html>
   );
 }

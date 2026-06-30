@@ -39,3 +39,30 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# temp / dev files
+*.log
+test*.json
+test_*.js
+tc.js
+test_cal.js
+test_payload.json
+gen_key.js
+all_bookings.json
+bookings_check.json
+*.txt
+start-server.bat
+
+# uploaded images (not used in production - use Google Drive)
+public/uploads/
+
+# local docs (not README, AGENTS, CLAUDE)
+AI_PROMPT.md
+FLOWCHART.md
+PLAN.md
+SYSTEM_BLUEPRINT.md
+SYS_PLAN.md
+.anchor-summary.md
+Ultimate_Haland_System_PRD_V5.pdf
+nexterr.txt
+nextout.txt
