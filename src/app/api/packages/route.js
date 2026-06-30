@@ -23,10 +23,6 @@ async function getCachedInventory() {
 // GET /api/packages — list all structured packages with widths + items
 export async function GET(request) {
   try {
-    const auth = requireAdmin(request);
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
     const [invMap, configRows] = await Promise.all([
       getCachedInventory(),
       getSheetData("Package_Config", "A2:H"),

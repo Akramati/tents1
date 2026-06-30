@@ -1,16 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSheetData } from "@/lib/sheets";
-import { requireAdmin } from "@/lib/auth";
 
 // GET /api/packages/flexible/calculate?typeName=كوش&packageName=كوشة+ورد&dims={"width":3}
 // GET /api/packages/flexible/calculate?typeName=كوش&packageName=كوشة+ورد&width=6
 export async function GET(request) {
   try {
-    const auth = requireAdmin(request);
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
-
     const { searchParams } = new URL(request.url);
     const typeName = searchParams.get("typeName");
     const packageName = searchParams.get("packageName");

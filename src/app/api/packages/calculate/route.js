@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSheetData } from "@/lib/sheets";
 import { rowsToPackages, calculateItems } from "@/lib/package-engine";
-import { requireAdmin } from "@/lib/auth";
 
 // Simple in-memory cache to avoid redundant Inventory_Stock reads
 let _invCache = { data: null, ts: 0 };
@@ -20,11 +19,6 @@ async function getCachedInventory() {
 // GET /api/packages/calculate?packageName=X&width=Y&length=Z
 export async function GET(request) {
   try {
-    const auth = requireAdmin(request);
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
-
     const { searchParams } = new URL(request.url);
     const packageName = searchParams.get("packageName");
     const width = searchParams.get("width");

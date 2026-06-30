@@ -27,11 +27,6 @@ const autoMigrate = async () => {
 // GET /api/packages/flexible?typeName=كوش — list all packages for a type
 export async function GET(request) {
   try {
-    const auth = requireAdmin(request);
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
-
     await autoMigrate();
     const { searchParams } = new URL(request.url);
     const typeName = searchParams.get("typeName");
