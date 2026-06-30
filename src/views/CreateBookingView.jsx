@@ -72,6 +72,11 @@ export default function CreateBookingView() {
   const [customerIdNumber, setCustomerIdNumber] = useState("");
   const [customerIdPhoto, setCustomerIdPhoto] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+
+  // Customer lookup by phone
+  const [phoneLookupResults, setPhoneLookupResults] = useState([]);
+  const [showPhoneLookup, setShowPhoneLookup] = useState(false);
+  const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
   const [guarantorIdPhoto, setGuarantorIdPhoto] = useState("");
 
   const [editBookingId, setEditBookingId] = useState(null);
@@ -104,6 +109,42 @@ export default function CreateBookingView() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handlePhoneLookup = async () => {
+    const phone = formData.customerPhone?.trim();
+    if (!phone || phone.length < 4) return;
+    setPhoneLookupLoading(true);
+    setShowPhoneLookup(true);
+    try {
+      const res = await fetch("/api/bookings?limit=500");
+      const data = await res.json();
+      if (data.success) {
+        const matches = (data.bookings || []).filter(b =>
+          b.customerPhone && b.customerPhone.replace(/\s/g, "").includes(phone.replace(/\s/g, ""))
+        );
+        // Deduplicate by customer name+phone
+        const seen = new Set();
+        const deduped = [];
+        for (const b of matches) {
+          const key = `${b.customerName || ""}|${b.customerPhone || ""}`;
+          if (!seen.has(key) && b.customerName) {
+            seen.add(key);
+            deduped.push(b);
+          }
+        }
+        setPhoneLookupResults(deduped);
+      }
+    } catch { setPhoneLookupResults([]); }
+    setPhoneLookupLoading(false);
+  };
+
+  const selectPhoneLookup = (b) => {
+    setFormData(prev => ({ ...prev, customerName: b.customerName || "", customerPhone: b.customerPhone || "" }));
+    setCustomerIdNumber(b.customerIdNumber || "");
+    setCustomerAddress(b.customerAddress || "");
+    setShowPhoneLookup(false);
+    setPhoneLookupResults([]);
   };
 
   const fetchTypeFields = async (typeName) => {
@@ -923,7 +964,32 @@ export default function CreateBookingView() {
           </div>
           <div className="form-group">
             <label htmlFor="customerPhone">رقم جوال العميل <span className="required">*</span></label>
-            <input type="tel" id="customerPhone" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} placeholder="مثال: 0555555555" required className="form-control" />
+            <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+              <input type="tel" id="customerPhone" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} placeholder="مثال: 0555555555" required className="form-control" style={{ flex: 1 }} />
+              <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.35rem 0.5rem", whiteSpace: "nowrap" }}
+                onClick={handlePhoneLookup} disabled={phoneLookupLoading || !formData.customerPhone?.trim()}>
+                {phoneLookupLoading ? "..." : "🔍 بحث"}
+              </button>
+            </div>
+            {showPhoneLookup && (
+              <div className="lookup-dropdown" style={{ position: "relative", marginTop: "0.25rem" }}>
+                {phoneLookupResults.length === 0 && !phoneLookupLoading && (
+                  <div className="lookup-empty" style={{ padding: "0.5rem", fontSize: "0.75rem", textAlign: "center", opacity: 0.6 }}>لا توجد نتائج</div>
+                )}
+                {phoneLookupResults.map((b, i) => (
+                  <div key={i} className="lookup-item" onClick={() => selectPhoneLookup(b)}>
+                    <div className="lookup-item-main">
+                      <span className="lookup-item-name">{b.customerName}</span>
+                      <span className="lookup-item-id">{b.customerPhone}</span>
+                    </div>
+                    <div className="lookup-item-sub">
+                      <span>آخر حجز: {b.startDate || "-"}</span>
+                      <span>{b.bookingId}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Customer extra fields */}
