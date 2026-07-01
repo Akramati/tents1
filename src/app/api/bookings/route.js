@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sheets, docs, drive, calendar } from "@/lib/google";
-import { getIncomeAccountForBooking, addFinanceEntry, getFinanceLedger, updateFinanceEntry, deleteFinanceEntry } from "@/lib/sheets";
+import { getIncomeAccountForBooking, addFinanceEntry, getFinanceLedger, updateFinanceEntry, deleteFinanceEntry, appendRow } from "@/lib/sheets";
 import { requireAuth } from "@/lib/auth";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -46,7 +46,10 @@ export async function GET(request) {
       toExpire.forEach(rowNum => { rows[rowNum - 2][8] = "منتهي"; });
     }
 
-    let bookings = rows.map((row) => ({
+    // Filter out rows without a bookingId (empty/partial rows)
+    const validRows = rows.filter(r => r[0] && r[0].trim());
+
+    let bookings = validRows.map((row) => ({
       bookingId: row[0],
       customerName: row[1] || "",
       customerPhone: row[2] || "",
@@ -396,17 +399,7 @@ export async function POST(request) {
       customerIdNumber, customerIdPhoto, customerAddress, guarantorIdPhoto,
     ];
 
-    const appendRes = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: "Bookings!A:AF",
-      valueInputOption: "RAW",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [newRow] },
-    });
-
-    if (appendRes.status !== 200) {
-      throw new Error(`فشل حفظ الحجز — خطأ من Google Sheets: ${appendRes.status}`);
-    }
+    await appendRow("Bookings", "A1:AF1", newRow);
 
     // Auto-create finance ledger entry for the payment (عربون — liability)
     if (paid > 0) {
