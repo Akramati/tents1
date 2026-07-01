@@ -624,12 +624,11 @@ export async function PUT(request) {
               const s = b[3], e = b[4];
               if (!s || !e) return false;
               const mainSt = (b[8] || "").trim();
-              if (mainSt === "مكتمل" || mainSt === "ملغي") return false;
+              if (mainSt === "مكتمل" || mainSt === "ملغي" || mainSt === "منتهي") return false;
               const fieldSt = (b[14] || "").trim();
               if (fieldSt === "cancelled" || fieldSt === "archived") return false;
+              if (fieldSt === "completed") return false;
               const isHall = (b[11] || "").trim().includes("صالة");
-              if (isHall && fieldSt === "completed") return false;
-              if (!isHall && fieldSt === "completed") return true;
               const bs = new Date(s), be = new Date(e), td = new Date(d);
               bs.setHours(0,0,0,0); be.setHours(0,0,0,0); td.setHours(0,0,0,0);
               return td >= bs && td <= be;

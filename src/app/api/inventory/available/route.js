@@ -70,12 +70,12 @@ export async function GET(request) {
       const activeBookings = allBookings.filter((b) => {
         if (excludeBookingId && b[0] === excludeBookingId) return false;
         const mainStatus = (b[8] || "").trim();
-        if (mainStatus === "مكتمل" || mainStatus === "ملغي") return false;
+        if (mainStatus === "مكتمل" || mainStatus === "ملغي" || mainStatus === "منتهي") return false;
         const fieldStatus = (b[14] || "").trim();
         if (fieldStatus === "cancelled" || fieldStatus === "archived") return false;
         const isHall = (b[11] || "").trim().includes("صالة");
-        if (isHall && fieldStatus === "completed") return false;
-        // Non-hall: أي طور في الميدان (preparation, installed, completed) = الأصناف محجوزة
+        if (fieldStatus === "completed") return false;
+        // Non-hall: preparation/installed = الأصناف محجوزة (completed مستثنى الآن)
         if (!isHall && fieldStatus && fieldStatus !== "pending") return true;
         if (!b[3] || !b[4]) return false;
         const start = new Date(b[3]);
