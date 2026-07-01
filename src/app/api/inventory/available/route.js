@@ -75,8 +75,6 @@ export async function GET(request) {
         if (fieldStatus === "cancelled" || fieldStatus === "archived") return false;
         const isHall = (b[11] || "").trim().includes("صالة");
         if (fieldStatus === "completed") return false;
-        // Non-hall: preparation/installed = الأصناف محجوزة (completed مستثنى الآن)
-        if (!isHall && fieldStatus && fieldStatus !== "pending") return true;
         if (!b[3] || !b[4]) return false;
         const start = new Date(b[3]);
         const end = new Date(b[4]);
