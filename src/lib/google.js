@@ -1,11 +1,18 @@
 import { google } from "googleapis";
 
-// Initialize Google Auth client
+let rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
+// Handle both real newlines and literal \n sequences
+if (!rawKey.includes("-----BEGIN PRIVATE KEY-----")) {
+  rawKey = "";
+}
+const privateKey = rawKey.includes("\\n")
+  ? rawKey.replace(/\\n/g, "\n")
+  : rawKey;
+
 const auth = new google.auth.GoogleAuth({
   credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    // Replace escaped newlines in private key
-    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
+    private_key: privateKey,
   },
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -16,7 +23,7 @@ const auth = new google.auth.GoogleAuth({
 });
 
 export const sheets = google.sheets({ version: "v4", auth });
-export const docs = google.google?.docs?.({ version: "v1", auth }) || google.docs({ version: "v1", auth });
+export const docs = google.docs({ version: "v1", auth });
 export const drive = google.drive({ version: "v3", auth });
 export const calendar = google.calendar({ version: "v3", auth });
 

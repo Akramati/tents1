@@ -396,13 +396,17 @@ export async function POST(request) {
       customerIdNumber, customerIdPhoto, customerAddress, guarantorIdPhoto,
     ];
 
-    await sheets.spreadsheets.values.append({
+    const appendRes = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: "Bookings!A:AF",
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values: [newRow] },
     });
+
+    if (appendRes.status !== 200) {
+      throw new Error(`فشل حفظ الحجز — خطأ من Google Sheets: ${appendRes.status}`);
+    }
 
     // Auto-create finance ledger entry for the payment (عربون — liability)
     if (paid > 0) {
