@@ -23,9 +23,9 @@ export function PrintProvider({ children }) {
     }
 
     const pageSize = previewSettings.templateType === "A5" ? "A5 portrait" : "A4 portrait";
-    const css = `@page { size: ${pageSize}; margin: 4mm 6mm; }
+    const css = `@page { size: ${pageSize}; margin: 0; }
 @media print {
-  body { margin: 0; padding: 0; font-family: sans-serif; direction: rtl; display: flex; align-items: center; min-height: 100vh; }
+  body { margin: 0; padding: 0; font-family: sans-serif; direction: rtl; }
   .no-print { display: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

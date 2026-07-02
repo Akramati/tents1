@@ -15,11 +15,10 @@ const InventoryListLayout = forwardRef(({ data, settings, previewSettings }, ref
   return (
     <div ref={ref} className="ps-root" dir="rtl">
       <style>{css}</style>
-      <div className="ps-center">
-        <table><tbody>
-          <tr><td className="ps-title">{company}</td></tr>
-          <tr><td className="ps-subtitle">{data.title || "قائمة الجرد"}</td></tr>
-        </tbody></table>
+      <table><tbody>
+        <tr><td className="ps-title">{company}</td></tr>
+        <tr><td className="ps-subtitle">{data.title || "قائمة الجرد"}</td></tr>
+      </tbody></table>
         <div style={{textAlign:"center",fontSize:sizes.detailSize,color:"#555",marginBottom:sizes.isHalf?"0.2rem":"0.3rem"}}>
           {data.date ? `تاريخ الجرد: ${data.date}` : ""}
         </div>
@@ -68,7 +67,6 @@ const InventoryListLayout = forwardRef(({ data, settings, previewSettings }, ref
         </div>
 
         <div className="ps-report-footer">قائمة جرد معتمدة</div>
-      </div>
     </div>
   );
 });

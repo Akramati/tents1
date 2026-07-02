@@ -19,11 +19,10 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
   return (
     <div ref={ref} className="ps-root" dir="rtl">
       <style>{css}</style>
-      <div className="ps-center">
-        <table><tbody>
-          <tr><td className="ps-title">{company}</td></tr>
-          <tr><td className="ps-subtitle">نقل مباشر — {data.sourceBookingId} → {data.targetBookingId}</td></tr>
-        </tbody></table>
+      <table><tbody>
+        <tr><td className="ps-title">{company}</td></tr>
+        <tr><td className="ps-subtitle">نقل مباشر — {data.sourceBookingId} → {data.targetBookingId}</td></tr>
+      </tbody></table>
         <table className="ps-details"><tbody>
           <tr>
             <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:hp,fontSize:sizes?.detailSize}}>
@@ -101,7 +100,6 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
               <td className="ps-sign-col"><div className="ps-sign-line"></div><div>توقيع المشرف</div></td>
             </tr>
           </tbody></table>
-        </div>
       </div>
     </div>
   );

@@ -33,11 +33,10 @@ const FieldItemsLayout = forwardRef(({ data, settings, previewSettings, formatDa
   return (
     <div ref={ref} className="ps-root" dir="rtl">
       <style>{css}</style>
-      <div className="ps-center">
-        <table><tbody>
-          <tr><td className="ps-title">{company}</td></tr>
-          <tr><td className="ps-subtitle">الأصناف المطلوبة للحجز</td></tr>
-        </tbody></table>
+      <table><tbody>
+        <tr><td className="ps-title">{company}</td></tr>
+        <tr><td className="ps-subtitle">الأصناف المطلوبة للحجز</td></tr>
+      </tbody></table>
         <table className="ps-details"><tbody>
           {pairs.map((row, ri) => (
             <tr key={ri}>
@@ -91,7 +90,6 @@ const FieldItemsLayout = forwardRef(({ data, settings, previewSettings, formatDa
             </tr>
           </tbody></table>
         </div>
-      </div>
     </div>
   );
 });

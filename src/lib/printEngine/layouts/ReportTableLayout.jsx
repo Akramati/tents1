@@ -10,11 +10,10 @@ const ReportTableLayout = forwardRef(({ data, settings, previewSettings }, ref) 
   return (
     <div ref={ref} className="ps-root" dir="rtl">
       <style>{css}</style>
-      <div className="ps-center">
-        <table><tbody>
-          <tr><td className="ps-title">{company}</td></tr>
-          <tr><td className="ps-subtitle">{data.title || "تقرير"}</td></tr>
-        </tbody></table>
+      <table><tbody>
+        <tr><td className="ps-title">{company}</td></tr>
+        <tr><td className="ps-subtitle">{data.title || "تقرير"}</td></tr>
+      </tbody></table>
 
         {data.subtitle && (
           <div style={{ textAlign: "center", fontSize: sizes.detailSize, color: "#666", marginBottom: sizes.isHalf ? "0.2rem" : "0.3rem" }}>{data.subtitle}</div>
@@ -51,7 +50,6 @@ const ReportTableLayout = forwardRef(({ data, settings, previewSettings }, ref) 
         )}
 
         {data.footer && <div className="ps-report-footer">{data.footer}</div>}
-      </div>
     </div>
   );
 });

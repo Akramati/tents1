@@ -3,7 +3,7 @@ export function buildPrintCSS({ font, titleSize, subtitleSize, detailSize, finan
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
     .ps-root { background: white; color: #111; font-family: '${font}', sans-serif; direction: rtl; width: ${bodyWidth}; padding: ${hp}; margin: 0 auto; }
-    .ps-center { display: flex; flex-direction: column; justify-content: center; min-height: ${isHalf ? "auto" : "100%"}; }
+
     table { width: 100%; border-collapse: collapse; margin-bottom: ${isHalf ? '0.3rem' : '0.5rem'}; }
     td, th { padding: ${isHalf ? '0.2rem 0.4rem' : '0.3rem 0.5rem'}; text-align: right; }
     .ps-title { font-size: ${titleSize}; font-weight: bold; text-align: center; color: #1a5c3e; padding-bottom: ${isHalf ? '0.1rem' : '0.15rem'}; }
@@ -37,8 +37,6 @@ export function buildPrintCSS({ font, titleSize, subtitleSize, detailSize, finan
     .ps-summary .value { font-weight: 400; color: #000; text-align: left; direction: ltr; }
     @media print {
       .no-print { display: none !important; }
-      html, body { width: 210mm; height: 297mm; margin: 0 !important; padding: 0 !important; }
-      .ps-root { width: 100% !important; max-width: 100% !important; }
     }
   `;
 }
@@ -49,7 +47,7 @@ export function computePrintSizes(previewSettings, systemSettings) {
   const templateType = previewSettings.templateType || "A4";
   const isHalf = templateType === "A5";
   const bodyWidth = templateType === "thermal" ? "80mm" : "100%";
-  const bodyPad = templateType === "thermal" ? "0.3cm" : isHalf ? "0.3cm" : "0.6cm";
+  const bodyPad = templateType === "thermal" ? "0.3cm" : isHalf ? "0.3cm" : "0.8cm";
   const font = systemSettings?.defaultFont || "Arial";
   const titleSize = `${Math.round(24 * scale)}px`;
   const subtitleSize = `${Math.round(16 * scale)}px`;
