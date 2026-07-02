@@ -49,7 +49,8 @@ export default function PrintPreviewModal({
             <div className="preview-control-group">
               <label>نوع القالب</label>
               <select value={previewSettings.templateType} onChange={(e) => setPreviewSettings({ ...previewSettings, templateType: e.target.value })}>
-                <option value="A4">ورق عقد A4</option>
+                <option value="A4">ورقة A4 كاملة</option>
+                <option value="A5">نصف ورقة A5</option>
                 <option value="thermal">إيصال حراري صغير</option>
               </select>
             </div>

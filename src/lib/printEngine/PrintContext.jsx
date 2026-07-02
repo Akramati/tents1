@@ -22,9 +22,10 @@ export function PrintProvider({ children }) {
       styles.push(s.innerHTML);
     }
 
-    const css = `@page { size: A4 portrait; margin: 8mm 10mm; }
+    const pageSize = previewSettings.templateType === "A5" ? "A5 portrait" : "A4 portrait";
+    const css = `@page { size: ${pageSize}; margin: 4mm 6mm; }
 @media print {
-  body { margin: 0; padding: 0; font-family: sans-serif; direction: rtl; }
+  body { margin: 0; padding: 0; font-family: sans-serif; direction: rtl; display: flex; align-items: center; min-height: 100vh; }
   .no-print { display: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
@@ -41,12 +42,11 @@ ${styles.join("\n")}`;
     win.focus();
     setTimeout(() => { win.print(); }, 300);
 
-    // Close modal (don't wait for print dialog on mobile)
     setTimeout(() => {
       setShowPrintPreview(false);
       setPrintData({ templateType: null, targetData: null });
     }, 500);
-  }, [documentTitle]);
+  }, [documentTitle, previewSettings.templateType]);
 
   // Fetch system settings once
   useEffect(() => {
