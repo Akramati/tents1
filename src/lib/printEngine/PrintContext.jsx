@@ -21,8 +21,10 @@ export function PrintProvider({ children }) {
       setShowPrintPreview(false);
       setPrintData({ templateType: null, targetData: null });
     },
-    pageStyle: "@page { margin: 0; }",
+    pageStyle: "@page { size: A4; margin: 6mm 8mm; } @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }",
     ignoreGlobalStyles: true,
+    removeAfterPrint: true,
+    suppressErrors: false,
   });
 
   // Fetch system settings once

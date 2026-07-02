@@ -31,6 +31,8 @@ export function buildPrintCSS({ font, titleSize, subtitleSize, detailSize, finan
     .ps-inv-ok { color: #16a34a; font-weight: 600; }
     @media print {
       .no-print { display: none !important; }
+      html, body { width: 210mm; height: 297mm; margin: 0 !important; padding: 0 !important; }
+      .ps-root { width: 100% !important; max-width: 100% !important; }
     }
   `;
 }
