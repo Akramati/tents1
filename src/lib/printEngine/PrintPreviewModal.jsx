@@ -72,10 +72,7 @@ export default function PrintPreviewModal({
         </div>
 
         <div className="preview-actions">
-          <button className="btn btn-primary" onClick={() => {
-            const delay = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 800 : 100;
-            const t = setTimeout(() => { printFn(); clearTimeout(t); }, delay);
-          }}>
+          <button className="btn btn-primary" onClick={() => printFn()}>
             🖨️ طباعة
           </button>
           <button className="btn btn-secondary" onClick={onClose}>❌ إلغاء</button>

@@ -1,6 +1,5 @@
 "use client";
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
-import { useReactToPrint } from "react-to-print";
 import PrintPreviewModal from "./PrintPreviewModal";
 
 const PrintContext = createContext(null);
@@ -14,18 +13,40 @@ export function PrintProvider({ children }) {
   const printRef = useRef(null);
   const settingsFetched = useRef(false);
 
-  const printFn = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: documentTitle,
-    onAfterPrint: () => {
+  const printFn = useCallback(() => {
+    const el = printRef.current;
+    if (!el) return;
+
+    const styles = [];
+    for (const s of el.querySelectorAll("style")) {
+      styles.push(s.innerHTML);
+    }
+
+    const css = `@page { size: A4 portrait; margin: 8mm 10mm; }
+@media print {
+  body { margin: 0; padding: 0; font-family: sans-serif; direction: rtl; }
+  .no-print { display: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+${styles.join("\n")}`;
+
+    const win = window.open("", "_blank", "width=800,height=600,scrollbars=yes");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html>
+<html dir="rtl">
+<head><meta charset="utf-8"><title>${documentTitle}</title><style>${css.replace(/<\/script>/g, "<\\/script>")}</style></head>
+<body>${el.innerHTML}</body>
+</html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 300);
+
+    // Close modal (don't wait for print dialog on mobile)
+    setTimeout(() => {
       setShowPrintPreview(false);
       setPrintData({ templateType: null, targetData: null });
-    },
-    pageStyle: "@page { size: A4; margin: 6mm 8mm; } @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }",
-    ignoreGlobalStyles: true,
-    removeAfterPrint: true,
-    suppressErrors: false,
-  });
+    }, 500);
+  }, [documentTitle]);
 
   // Fetch system settings once
   useEffect(() => {
