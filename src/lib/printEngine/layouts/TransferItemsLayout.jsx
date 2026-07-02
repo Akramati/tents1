@@ -6,6 +6,7 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
   const sizes = computePrintSizes(previewSettings, settings);
   const css = buildPrintCSS(sizes);
   const company = settings?.companyName || "مجموعة التعزي لإدارة المناسبات والتأجير";
+  const hp = sizes.isHalf ? "0.3rem" : "0.5rem";
 
   const pickItems = (data.pickItems || []).filter(i => parseInt(i.quantity) > 0);
   const returnItems = (data.returnItems || []).filter(i => parseInt(i.quantity) > 0);
@@ -18,36 +19,38 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
   return (
     <div ref={ref} className="ps-root" dir="rtl">
       <style>{css}</style>
-      <table><tbody>
-        <tr><td className="ps-title">{company}</td></tr>
-        <tr><td className="ps-subtitle">نقل مباشر — {data.sourceBookingId} → {data.targetBookingId}</td></tr>
-      </tbody></table>
-      <table className="ps-details"><tbody>
-        <tr>
-          <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:"0.3rem 0.5rem",fontSize:sizes?.detailSize}}>
-            <span style={{fontWeight:600,color:"#333"}}>المصدر:</span>
-            <span style={{marginRight:"0.3rem",color:"#000"}}>{data.sourceCustomer || "-"}</span>
-          </td>
-          <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:"0.3rem 0.5rem",fontSize:sizes?.detailSize}}>
-            <span style={{fontWeight:600,color:"#333"}}>الهدف:</span>
-            <span style={{marginRight:"0.3rem",color:"#000"}}>{data.targetCustomer || "-"}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:"0.3rem 0.5rem",fontSize:sizes?.detailSize}}>
-            <span style={{fontWeight:600,color:"#333"}}>تاريخ النقل:</span>
-            <span style={{marginRight:"0.3rem",color:"#000"}}>{data.transferDate || new Date().toLocaleDateString("ar-EG")}</span>
-          </td>
-          <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:"0.3rem 0.5rem",fontSize:sizes?.detailSize}}>
-            <span style={{fontWeight:600,color:"#333"}}>نوع النقل:</span>
-            <span style={{marginRight:"0.3rem",color:"#000"}}>{data.transferType === "dismantled" ? "مفكوك" : "منصوب"}</span>
-          </td>
-        </tr>
-      </tbody></table>
+      <div className="ps-center">
+        <table><tbody>
+          <tr><td className="ps-title">{company}</td></tr>
+          <tr><td className="ps-subtitle">نقل مباشر — {data.sourceBookingId} → {data.targetBookingId}</td></tr>
+        </tbody></table>
+        <table className="ps-details"><tbody>
+          <tr>
+            <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:hp,fontSize:sizes?.detailSize}}>
+              <span style={{fontWeight:600,color:"#333"}}>المصدر:</span>
+              <span style={{marginRight:"0.2rem",color:"#000"}}>{data.sourceCustomer || "-"}</span>
+            </td>
+            <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:hp,fontSize:sizes?.detailSize}}>
+              <span style={{fontWeight:600,color:"#333"}}>الهدف:</span>
+              <span style={{marginRight:"0.2rem",color:"#000"}}>{data.targetCustomer || "-"}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:hp,fontSize:sizes?.detailSize}}>
+              <span style={{fontWeight:600,color:"#333"}}>تاريخ النقل:</span>
+              <span style={{marginRight:"0.2rem",color:"#000"}}>{data.transferDate || new Date().toLocaleDateString("ar-EG")}</span>
+            </td>
+            <td style={{width:"50%",borderBottom:"1px dashed #ccc",padding:hp,fontSize:sizes?.detailSize}}>
+              <span style={{fontWeight:600,color:"#333"}}>نوع النقل:</span>
+              <span style={{marginRight:"0.2rem",color:"#000"}}>{data.transferType === "dismantled" ? "مفكوك" : "منصوب"}</span>
+            </td>
+          </tr>
+        </tbody></table>
 
-      {hasPick && (
-        <>
-          <div style={{marginTop:"1rem",fontWeight:"bold",color:"#059669"}}>📥 أصناف المطلوب تحميلها من المخزن:</div>
+        {hasPick && (
+          <div style={{marginTop:sizes.isHalf?"0.3rem":"0.5rem",fontWeight:"bold",fontSize:sizes.detailSize,color:"#059669"}}>الأصناف المطلوب تحميلها من المخزن:</div>
+        )}
+        {hasPick && (
           <table className="ps-report-table">
             <thead><tr><th>#</th><th>الصنف</th><th>الكمية</th></tr></thead>
             <tbody>
@@ -56,12 +59,12 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
               ))}
             </tbody>
           </table>
-        </>
-      )}
+        )}
 
-      {hasReturn && (
-        <>
-          <div style={{marginTop:"1rem",fontWeight:"bold",color:"#dc2626"}}>📤 أصناف المطلوب إرجاعها للمخزن:</div>
+        {hasReturn && (
+          <div style={{marginTop:sizes.isHalf?"0.3rem":"0.5rem",fontWeight:"bold",fontSize:sizes.detailSize,color:"#dc2626"}}>الأصناف المطلوب إرجاعها للمخزن:</div>
+        )}
+        {hasReturn && (
           <table className="ps-report-table">
             <thead><tr><th>#</th><th>الصنف</th><th>الكمية</th></tr></thead>
             <tbody>
@@ -70,12 +73,12 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
               ))}
             </tbody>
           </table>
-        </>
-      )}
+        )}
 
-      {hasInherit && (
-        <>
-          <div style={{marginTop:"1rem",fontWeight:"bold",color:"#4b5563"}}>✓ الأصناف المنقولة مع الخيمة:</div>
+        {hasInherit && (
+          <div style={{marginTop:sizes.isHalf?"0.3rem":"0.5rem",fontWeight:"bold",fontSize:sizes.detailSize,color:"#4b5563"}}>الأصناف المنقولة مع الخيمة:</div>
+        )}
+        {hasInherit && (
           <table className="ps-report-table">
             <thead><tr><th>#</th><th>الصنف</th><th>الكمية</th></tr></thead>
             <tbody>
@@ -84,33 +87,21 @@ const TransferItemsLayout = forwardRef(({ data, settings, previewSettings, forma
               ))}
             </tbody>
           </table>
-        </>
-      )}
+        )}
 
-      {!hasPick && !hasReturn && !hasInherit && (
-        <div style={{textAlign:"center",padding:"2rem",color:"#666"}}>لا توجد أصناف</div>
-      )}
+        {!hasPick && !hasReturn && !hasInherit && (
+          <div style={{textAlign:"center",padding:"0.5rem",color:"#666",fontSize:sizes.detailSize}}>لا توجد أصناف</div>
+        )}
 
-      <div className="ps-signature" style={{marginTop:"2rem"}}>
-        <table style={{width:"100%",direction:"rtl"}}><tbody>
-          <tr>
-            <td style={{width:"33%",textAlign:"center",paddingBottom:"0.5rem"}}>
-              <div style={{borderTop:"1px solid #333",width:"80%",margin:"0 auto",paddingTop:"0.5rem"}}>
-                <div style={{fontWeight:"bold",fontSize:sizes?.small?"0.7rem":"0.85rem"}}>توقيع أمين المخزن</div>
-              </div>
-            </td>
-            <td style={{width:"33%",textAlign:"center",paddingBottom:"0.5rem"}}>
-              <div style={{borderTop:"1px solid #333",width:"80%",margin:"0 auto",paddingTop:"0.5rem"}}>
-                <div style={{fontWeight:"bold",fontSize:sizes?.small?"0.7rem":"0.85rem"}}>توقيع حارس الخيمة</div>
-              </div>
-            </td>
-            <td style={{width:"34%",textAlign:"center",paddingBottom:"0.5rem"}}>
-              <div style={{borderTop:"1px solid #333",width:"80%",margin:"0 auto",paddingTop:"0.5rem"}}>
-                <div style={{fontWeight:"bold",fontSize:sizes?.small?"0.7rem":"0.85rem"}}>توقيع المشرف</div>
-              </div>
-            </td>
-          </tr>
-        </tbody></table>
+        <div className="ps-signature" style={{marginTop:sizes.isHalf?"0.8rem":"1.5rem"}}>
+          <table style={{width:"100%",direction:"rtl"}}><tbody>
+            <tr>
+              <td className="ps-sign-col"><div className="ps-sign-line"></div><div>توقيع أمين المخزن</div></td>
+              <td className="ps-sign-col"><div className="ps-sign-line"></div><div>توقيع حارس الخيمة</div></td>
+              <td className="ps-sign-col"><div className="ps-sign-line"></div><div>توقيع المشرف</div></td>
+            </tr>
+          </tbody></table>
+        </div>
       </div>
     </div>
   );

@@ -45,17 +45,17 @@ export function buildPrintCSS({ font, titleSize, subtitleSize, detailSize, finan
 
 export function computePrintSizes(previewSettings, systemSettings) {
   const fs = previewSettings.fontSize || "normal";
-  const scale = fs === "small" ? 0.65 : fs === "large" ? 1.2 : 1;
+  const scale = fs === "small" ? 0.75 : fs === "large" ? 1.25 : 1;
   const templateType = previewSettings.templateType || "A4";
   const isHalf = templateType === "A5";
   const bodyWidth = templateType === "thermal" ? "80mm" : "100%";
-  const bodyPad = templateType === "thermal" ? "0.3cm" : isHalf ? "0.3cm" : "0.5cm";
+  const bodyPad = templateType === "thermal" ? "0.3cm" : isHalf ? "0.3cm" : "0.6cm";
   const font = systemSettings?.defaultFont || "Arial";
-  const titleSize = `${Math.round(20 * scale)}px`;
-  const subtitleSize = `${Math.round(14 * scale)}px`;
-  const detailSize = `${Math.round(11 * scale)}px`;
-  const financialSize = `${Math.round(11 * scale)}px`;
-  const noteSize = `${Math.round(9 * scale)}px`;
-  const sigSize = `${Math.round(10 * scale)}px`;
+  const titleSize = `${Math.round(24 * scale)}px`;
+  const subtitleSize = `${Math.round(16 * scale)}px`;
+  const detailSize = `${Math.round(12 * scale)}px`;
+  const financialSize = `${Math.round(12 * scale)}px`;
+  const noteSize = `${Math.round(10 * scale)}px`;
+  const sigSize = `${Math.round(11 * scale)}px`;
   return { font, titleSize, subtitleSize, detailSize, financialSize, noteSize, sigSize, bodyWidth, bodyPad, isHalf };
 }
