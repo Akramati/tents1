@@ -54,17 +54,14 @@ export default function PrintPreviewModal({
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const pdf = new jsPDF("p", "mm", "a4");
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = (canvas.height * pdfW) / canvas.width;
-      let heightLeft = pdfH;
-      let position = 0;
-      pdf.addImage(imgData, "JPEG", 0, position, pdfW, pdfH);
-      heightLeft -= pdfH;
-      while (heightLeft > 0) {
-        position = heightLeft - pdfH;
-        pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, position, pdfW, pdfH);
-        heightLeft -= pdfH;
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgH = (canvas.height * pageW) / canvas.width;
+      let offset = 0;
+      while (offset < imgH) {
+        if (offset > 0) pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, -offset, pageW, imgH);
+        offset += pageH;
       }
       const pdfBase64 = pdf.output("datauristring").split(",")[1];
       const res = await fetch("/api/print/epson", {
