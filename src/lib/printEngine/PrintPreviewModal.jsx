@@ -1,5 +1,7 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import InvoiceLayout from "./layouts/InvoiceLayout";
 import ReportTableLayout from "./layouts/ReportTableLayout";
 import InventoryListLayout from "./layouts/InventoryListLayout";
@@ -11,6 +13,8 @@ export default function PrintPreviewModal({
   printRef, printFn, onClose, documentTitle
 }) {
   const { templateType, targetData } = printData;
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailMsg, setEmailMsg] = useState(null);
 
   const formatDateArabic = (dateStr) => {
     if (!dateStr) return "";
@@ -39,6 +43,45 @@ export default function PrintPreviewModal({
       default:
         return <div style={{ padding: "2rem", textAlign: "center" }}>نوع الطباعة غير معروف: {templateType}</div>;
     }
+  };
+
+  const handleEmailPrint = async () => {
+    const el = printRef.current;
+    if (!el) return;
+    setEmailSending(true);
+    setEmailMsg(null);
+    try {
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = (canvas.height * pdfW) / canvas.width;
+      let heightLeft = pdfH;
+      let position = 0;
+      pdf.addImage(imgData, "JPEG", 0, position, pdfW, pdfH);
+      heightLeft -= pdfH;
+      while (heightLeft > 0) {
+        position = heightLeft - pdfH;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, pdfW, pdfH);
+        heightLeft -= pdfH;
+      }
+      const pdfBase64 = pdf.output("datauristring").split(",")[1];
+      const res = await fetch("/api/print/epson", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfBase64, title: documentTitle }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEmailMsg("✅ تم إرسال المستند للطابعة");
+      } else {
+        setEmailMsg("❌ فشل الإرسال: " + (data.error || ""));
+      }
+    } catch (err) {
+      setEmailMsg("❌ خطأ: " + err.message);
+    }
+    setEmailSending(false);
   };
 
   return (
@@ -72,9 +115,18 @@ export default function PrintPreviewModal({
           {renderLayout()}
         </div>
 
+        {emailMsg && (
+          <div style={{ padding: "0.5rem 1.5rem", textAlign: "center", fontSize: "0.9rem", fontWeight: "bold", color: emailMsg.startsWith("✅") ? "#059669" : "#dc2626" }}>
+            {emailMsg}
+          </div>
+        )}
+
         <div className="preview-actions">
           <button className="btn btn-primary" onClick={() => printFn()}>
-            🖨️ طباعة
+            🖨️ طباعة (قريب)
+          </button>
+          <button className="btn btn-gold" onClick={handleEmailPrint} disabled={emailSending}>
+            {emailSending ? "⏳ جاري الإرسال..." : "📧 إرسال للطابعة (عن بعد)"}
           </button>
           <button className="btn btn-secondary" onClick={onClose}>❌ إلغاء</button>
         </div>
@@ -115,7 +167,7 @@ export default function PrintPreviewModal({
           }
           .preview-actions {
             padding: 0.75rem 1.5rem; border-top: 1px solid #e5e7eb;
-            display: flex; gap: 0.75rem; justify-content: center; flex-shrink: 0;
+            display: flex; gap: 0.75rem; justify-content: center; flex-shrink: 0; flex-wrap: wrap;
           }
           .preview-actions .btn-secondary { background: #6b7280; color: white; border: none; }
           .preview-actions .btn-secondary:hover { background: #4b5563; }
