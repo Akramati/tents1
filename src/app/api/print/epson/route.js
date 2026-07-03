@@ -14,11 +14,18 @@ export async function POST(request) {
 
     const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ pdfBase64, title: title || "مستند" }),
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return NextResponse.json({ success: false, error: "استجابة غير متوقعة من خدمة الطباعة", responseText: text.substring(0, 500) }, { status: 502 });
+    }
     return NextResponse.json(data);
   } catch (error) {
     console.error("POST /api/print/epson error:", error);
