@@ -91,6 +91,20 @@ export default function FieldOpsView() {
   const [deleteExpenseConfirm, setDeleteExpenseConfirm] = useState(null);
   const [fieldAccounts, setFieldAccounts] = useState(FALLBACK_EXPENSE_ACCOUNTS);
 
+  const [payModalBooking, setPayModalBooking] = useState(null);
+  const [payModalAmount, setPayModalAmount] = useState("");
+  const [payModalCashAccount, setPayModalCashAccount] = useState("1101");
+  const [payModalCostCenter, setPayModalCostCenter] = useState("");
+  const [payModalTransportType, setPayModalTransportType] = useState("");
+  const [payModalInvoiceLink, setPayModalInvoiceLink] = useState("");
+  const [payModalConfirmBooking, setPayModalConfirmBooking] = useState(false);
+  const [payModalSubmitting, setPayModalSubmitting] = useState(false);
+  const [payReceipt, setPayReceipt] = useState(null);
+
+  const formatCurrency = (n) => { if (n === undefined || n === null) return "0"; return Number(n).toLocaleString(); };
+
+  const closePayModal = () => { setPayModalBooking(null); setPayModalAmount(""); setPayModalConfirmBooking(false); setPayModalCashAccount("1101"); setPayModalCostCenter(""); setPayModalTransportType(""); setPayModalInvoiceLink(""); };
+
   const accountLookup = useMemo(() => {
     const map = {};
     Object.values(fieldAccounts).forEach(arr => arr.forEach(a => { map[a.code] = a.label; }));
@@ -437,6 +451,16 @@ export default function FieldOpsView() {
     setExtendCashAccount("1101");
   };
 
+  const openPayModal = (booking) => {
+    setPayModalBooking(booking);
+    setPayModalAmount("");
+    setPayModalConfirmBooking(false);
+    setPayModalCashAccount("1101");
+    setPayModalCostCenter("");
+    setPayModalTransportType("");
+    setPayModalInvoiceLink("");
+  };
+
   const handleExtend = async () => {
     if (!extendModal || !extendEndDate) {
       setErrorMsg("أدخل تاريخ النهاية الجديد");
@@ -596,6 +620,7 @@ export default function FieldOpsView() {
                       onMove={moveFieldCard}
                       onComplete={["installed", "completed"].includes(col.key) ? openCompletionModal : null}
                       onExpense={["preparation", "installed"].includes(col.key) ? openExpenseModal : null}
+                      onPayment={["preparation", "installed", "completed"].includes(col.key) ? openPayModal : null}
                       onTransfer={["installed", "completed"].includes(col.key) ? openTransferModal : null}
                       onExtend={["installed", "completed"].includes(col.key) ? openExtendModal : null}
                       onPrintItems={["preparation", "installed", "completed"].includes(col.key) ? handlePrintItems : null}
@@ -1108,6 +1133,174 @@ export default function FieldOpsView() {
               <button className="btn btn-primary" onClick={handleTransfer}
                 disabled={!transferTargetBooking || transferChecking}>
                 {transferChecking ? "..." : "🔄 تأكيد النقل"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {payModalBooking && !payReceipt && (
+        <div className="modal-overlay" onClick={closePayModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth:"480px"}}>
+            <div className="modal-header">
+              <h2>💰 تسجيل دفعة</h2>
+              <button className="modal-close" onClick={closePayModal}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="selected-booking-info">
+                <p><strong>العميل:</strong> {payModalBooking.customerName}</p>
+                <p><strong>رقم الحجز:</strong> {payModalBooking.bookingId}</p>
+                <p><strong>الإجمالي:</strong> {payModalBooking.totalAmount} ريال</p>
+                <p><strong>المدفوع:</strong> {payModalBooking.paidAmount} ريال</p>
+                <p><strong>المتبقي:</strong> {payModalBooking.remainingAmount || "0"} ريال</p>
+                <p><strong>الحالة:</strong> {payModalBooking.status}</p>
+                {payModalBooking.status === "قيد الانتظار" && (
+                  <label className="checkbox-label" style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer"}}>
+                    <input type="checkbox" checked={payModalConfirmBooking} onChange={(e) => setPayModalConfirmBooking(e.target.checked)} />
+                    ✅ تأكيد الحجز (تغيير الحالة إلى "مؤكد")
+                  </label>
+                )}
+              </div>
+              <div className="form-group" style={{marginTop:"1rem"}}>
+                <label>المبلغ المستلم (ريال) <span className="required">*</span></label>
+                <input type="number" value={payModalAmount} onChange={(e) => setPayModalAmount(e.target.value)} placeholder="أدخل المبلغ المستلم..." className="form-control" />
+              </div>
+              <div className="form-group" style={{marginTop:"0.75rem"}}>
+                <label>🏦 الخزينة المستلمة</label>
+                <select className="form-control" value={payModalCashAccount} onChange={(e) => setPayModalCashAccount(e.target.value)}>
+                  {CASH_ACCOUNTS.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{marginTop:"0.75rem"}}>
+                <label>🏷️ مركز التكلفة</label>
+                <select className="form-control" value={payModalCostCenter} onChange={(e) => setPayModalCostCenter(e.target.value)}>
+                  <option value="">— بدون —</option>
+                  {costCenters.map(c => <option key={c.code} value={c.code}>{c.name} ({c.type})</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{marginTop:"0.75rem"}}>
+                <label>🚚 نوع النقل</label>
+                <select className="form-control" value={payModalTransportType} onChange={(e) => setPayModalTransportType(e.target.value)}>
+                  <option value="">— بدون —</option>
+                  <option value="company_vehicle">موتر الشركة</option>
+                  <option value="hired_vehicle">موتر مستأجر</option>
+                  <option value="client">الزبون</option>
+                </select>
+              </div>
+              <div className="form-group" style={{marginTop:"0.75rem"}}>
+                <label>🔗 رابط المستند (فاتورة/سند)</label>
+                <input type="url" value={payModalInvoiceLink} onChange={(e) => setPayModalInvoiceLink(e.target.value)} className="form-control" placeholder="https://drive.google.com/..." />
+              </div>
+              <div style={{display:"flex",gap:"1rem",alignItems:"center",marginTop:"0.5rem"}}>
+                {payModalAmount && parseFloat(payModalAmount) > 0 && (
+                  parseFloat(payModalAmount) > parseFloat(payModalBooking.remainingAmount || 0)
+                    ? <span className="pay-warning">⚠️ المبلغ المستلم أكبر من المبلغ المتبقي!</span>
+                    : <span className="pay-valid">✅ المبلغ صحيح</span>
+                )}
+                {payModalAmount && parseFloat(payModalAmount) <= 0 && <span className="pay-warning">❌ المبلغ يجب أن يكون أكبر من صفر</span>}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={closePayModal}>إلغاء</button>
+              <button className="btn btn-primary" disabled={payModalSubmitting || !payModalAmount || parseFloat(payModalAmount) <= 0 || parseFloat(payModalAmount) > parseFloat(payModalBooking.remainingAmount || 0)}
+                onClick={async () => {
+                  const amt = parseFloat(payModalAmount);
+                  if (!amt || amt <= 0) return;
+                  setPayModalSubmitting(true);
+                  try {
+                    const tk = localStorage.getItem("token");
+                    const res = await fetch("/api/bookings/payment", {
+                      method: "PATCH",
+                      headers: {"Content-Type":"application/json", Authorization: `Bearer ${tk}`},
+                      body: JSON.stringify({ bookingId: payModalBooking.bookingId, amount: payModalAmount, confirmBooking: payModalConfirmBooking, cashAccountCode: payModalCashAccount, costCenter: payModalCostCenter, transportType: payModalTransportType, invoiceLink: payModalInvoiceLink }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setPayReceipt({
+                        booking: { ...payModalBooking, paidAmount: data.paidAmount, remainingAmount: data.remainingAmount, status: data.status },
+                        amount: amt,
+                        cashAccount: payModalCashAccount,
+                      });
+                      setPayModalAmount("");
+                      setPayModalConfirmBooking(false);
+                      fetchFieldBookings();
+                    } else {
+                      setErrorMsg(data.error || "فشل تسجيل الدفعة");
+                    }
+                  } catch { setErrorMsg("خطأ في الاتصال بالخادم"); }
+                  finally { setPayModalSubmitting(false); }
+                }}
+              >
+                {payModalSubmitting ? "جاري التسجيل..." : "✅ تأكيد تسجيل الدفعة"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Receipt */}
+      {payReceipt && (
+        <div className="modal-overlay" onClick={() => { setPayReceipt(null); closePayModal(); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth:"520px"}}>
+            <div className="modal-header">
+              <h2>🧾 سند قبض</h2>
+              <button className="modal-close" onClick={() => { setPayReceipt(null); closePayModal(); }}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="receipt-card" style={{padding:"1rem",background:"rgba(255,255,255,0.03)",borderRadius:"12px",border:"1px solid rgba(255,215,0,0.15)"}}>
+                <div style={{textAlign:"center",marginBottom:"0.75rem"}}>
+                  <div style={{fontSize:"1.1rem",fontWeight:700,color:"var(--gold)"}}>🧾 سند قبض</div>
+                  <div style={{fontSize:"0.78rem",opacity:0.6,marginTop:"0.15rem"}}>هابي لاند لتأجير الخيام</div>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0",borderBottom:"1px dashed rgba(255,255,255,0.08)"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>رقم السند</span>
+                  <strong style={{fontSize:"0.82rem"}}>RCP-{payReceipt.booking.bookingId}-{Date.now().toString().slice(-6)}</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0",borderBottom:"1px dashed rgba(255,255,255,0.08)"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>التاريخ</span>
+                  <strong style={{fontSize:"0.82rem"}}>{new Date().toLocaleDateString("ar-SA", { year:"numeric", month:"long", day:"numeric" })}</strong>
+                </div>
+                <div style={{margin:"0.5rem 0",borderTop:"1px solid rgba(255,255,255,0.1)"}}></div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>اسم العميل</span>
+                  <strong style={{fontSize:"0.85rem"}}>{payReceipt.booking.customerName}</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>رقم الحجز</span>
+                  <strong style={{fontSize:"0.85rem"}}>{payReceipt.booking.bookingId}</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>رقم الجوال</span>
+                  <strong style={{fontSize:"0.85rem"}}>{payReceipt.booking.customerPhone}</strong>
+                </div>
+                <div style={{margin:"0.5rem 0",borderTop:"1px solid rgba(255,255,255,0.1)"}}></div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.4rem 0"}}>
+                  <span style={{fontSize:"0.85rem"}}>💰 المبلغ المستلم</span>
+                  <strong style={{fontSize:"1rem",color:"var(--gold)"}}>{formatCurrency(payReceipt.amount)} ريال</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>إجمالي المدفوع</span>
+                  <strong style={{fontSize:"0.85rem"}}>{payReceipt.booking.paidAmount} ريال</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>المتبقي</span>
+                  <strong style={{fontSize:"0.85rem",color:payReceipt.booking.remainingAmount > 0 ? "#ff4444" : "#4caf50"}}>{payReceipt.booking.remainingAmount} ريال</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>حالة الحجز</span>
+                  <strong style={{fontSize:"0.85rem"}}>{payReceipt.booking.status}</strong>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"0.3rem 0"}}>
+                  <span style={{fontSize:"0.82rem",opacity:0.6}}>الخزينة</span>
+                  <strong style={{fontSize:"0.85rem"}}>{CASH_ACCOUNTS.find(a => a.code === payReceipt.cashAccount)?.label || payReceipt.cashAccount}</strong>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => { setPayReceipt(null); closePayModal(); }}>إغلاق</button>
+              <button className="btn btn-gold" onClick={() => { setPayReceipt(null); closePayModal(); setPayModalCashAccount("1101"); }}>
+                ➕ تسجيل دفعة أخرى
               </button>
             </div>
           </div>

@@ -38,7 +38,7 @@ const CASH_ACCOUNTS = [
   { code: "1104", label: "📱 محفظة جيب" },
 ];
 
-export default function FieldCard({ booking, onMove, onComplete, onExpense, onTransfer, onExtend, onRefresh, costCenters, fieldAccounts, onPrintItems }) {
+export default function FieldCard({ booking, onMove, onComplete, onExpense, onTransfer, onExtend, onRefresh, costCenters, fieldAccounts, onPrintItems, onPayment }) {
   const [expanded, setExpanded] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
   const [expenseForm, setExpenseForm] = useState({});
@@ -247,6 +247,7 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
         {stage === "preparation" && (
           <>
             {onExpense && <button className="card-btn expense-btn" onClick={() => onExpense(booking, "preparation")}>💰 مصاريف تجهيز</button>}
+            {onPayment && <button className="card-btn pay-btn" onClick={() => onPayment(booking)}>💵 دفعة</button>}
             {onMove && <button className="card-btn install-btn" onClick={() => onMove(booking.bookingId, "installed")}>➡️ تثبيت</button>}
             {onPrintItems && <button className="card-btn" style={{color:"#6366f1",borderColor:"#6366f1"}} onClick={() => onPrintItems(booking)}>🖨️ طباعة الأصناف</button>}
           </>
@@ -254,6 +255,7 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
         {stage === "installed" && (
           <>
             {onExpense && <button className="card-btn expense-btn" onClick={() => onExpense(booking, "installation")}>💰 مصاريف تركيب</button>}
+            {onPayment && <button className="card-btn pay-btn" onClick={() => onPayment(booking)}>💵 دفعة</button>}
             <button className="card-btn" style={{color:"#3b82f6",borderColor:"#3b82f6"}} onClick={startEditingItems}>✏️ تعديل الأصناف</button>
             {onTransfer && <button className="card-btn transfer-btn" onClick={() => onTransfer(booking)}>🔄 نقل مباشر</button>}
             {onExtend && <button className="card-btn" style={{color:"#f59e0b",borderColor:"#f59e0b"}} onClick={() => onExtend(booking)}>⏱ تمديد</button>}
@@ -263,6 +265,7 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
         )}
         {stage === "completed" && (
           <>
+            {onPayment && <button className="card-btn pay-btn" onClick={() => onPayment(booking)}>💵 دفعة</button>}
             {onTransfer && <button className="card-btn transfer-btn" onClick={() => onTransfer(booking)}>🔄 نقل مباشر</button>}
             {onExtend && <button className="card-btn" style={{color:"#f59e0b",borderColor:"#f59e0b"}} onClick={() => onExtend(booking)}>⏱ تمديد</button>}
             {onComplete && <button className="card-btn complete-btn" onClick={() => onComplete(booking)}>📋 إتمام الجرد</button>}
