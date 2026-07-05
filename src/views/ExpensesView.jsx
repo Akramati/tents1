@@ -541,7 +541,20 @@ export default function ExpensesView() {
                     }
                   }} className="form-control">
                     <option value="">-- بدون --</option>
-                    {accounts.filter(a => !a.parentCode).map(a => <option key={a.accountCode} value={a.accountCode}>{a.accountCode} - {a.accountName}</option>)}
+                    {(() => {
+                      const type = acctForm.accountType;
+                      const filtered = accounts.filter(a => a.accountType === type && a.isActive !== false)
+                        .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+                      const depth = {};
+                      for (const a of filtered) {
+                        depth[a.accountCode] = a.parentCode ? (depth[a.parentCode] ?? 0) + 1 : 0;
+                      }
+                      return filtered.map(a => (
+                        <option key={a.accountCode} value={a.accountCode}>
+                          {"–".repeat(depth[a.accountCode] || 0)}{depth[a.accountCode] > 0 ? " " : ""}{a.accountCode} - {a.accountName}
+                        </option>
+                      ));
+                    })()}
                   </select>
                 </div>
                 <div className="form-group">
@@ -1043,7 +1056,20 @@ export default function ExpensesView() {
                     }
                   }} className="form-control">
                     <option value="">-- بدون --</option>
-                    {accounts.filter(a => !a.parentCode).map(a => <option key={a.accountCode} value={a.accountCode}>{a.accountCode} - {a.accountName}</option>)}
+                    {(() => {
+                      const type = acctForm.accountType;
+                      const filtered = accounts.filter(a => a.accountType === type && a.isActive !== false)
+                        .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+                      const depth = {};
+                      for (const a of filtered) {
+                        depth[a.accountCode] = a.parentCode ? (depth[a.parentCode] ?? 0) + 1 : 0;
+                      }
+                      return filtered.map(a => (
+                        <option key={a.accountCode} value={a.accountCode}>
+                          {"–".repeat(depth[a.accountCode] || 0)}{depth[a.accountCode] > 0 ? " " : ""}{a.accountCode} - {a.accountName}
+                        </option>
+                      ));
+                    })()}
                   </select>
                 </div>
                 <div className="form-group">

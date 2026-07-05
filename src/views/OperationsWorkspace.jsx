@@ -9,6 +9,7 @@ import InventoryView from "@/views/InventoryView";
 import ProfitLossView from "@/views/ProfitLossView";
 import PackagesView from "@/views/PackagesView";
 import ExpensesView from "@/views/ExpensesView";
+import TransactionsView from "@/views/TransactionsView";
 import PaymentsView from "@/views/PaymentsView";
 import PaymentView from "@/views/PaymentView";
 
@@ -22,6 +23,7 @@ const OP_VIEWS = [
   { key: "packages", label: "الباقات", icon: "🎁", adminOnly: true },
   { key: "expenses", label: "المصروفات", icon: "💸", adminOnly: true },
   { key: "profitloss", label: "الأرباح والخسائر", icon: "📊", adminOnly: true },
+  { key: "transactions", label: "العمليات المالية", icon: "💰", adminOnly: true },
   { key: "payments", label: "سندات الصرف", icon: "💳", adminOnly: true },
   { key: "payment", label: "تسجيل دفعة", icon: "💰", hidden: true, adminOnly: false },
 ];
@@ -107,6 +109,7 @@ export default function OperationsWorkspace() {
         {activeView === "inventory" && <InventoryView />}
         {isAdmin && activeView === "packages" && <PackagesView />}
         {isAdmin && activeView === "expenses" && <ExpensesView />}
+        {isAdmin && activeView === "transactions" && <TransactionsView />}
         {isAdmin && activeView === "profitloss" && (
           <ProfitLossView pnlData={pnlData} pnlLoading={pnlLoading} fetchProfitLoss={fetchProfitLoss} print={print} />
         )}
