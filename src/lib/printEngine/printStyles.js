@@ -26,8 +26,18 @@ export function buildPrintCSS({ font, titleSize, subtitleSize, detailSize, finan
     .ps-report-table { width: 100%; border-collapse: collapse; margin: ${isHalf ? '0.3rem 0' : '0.5rem 0'}; }
     .ps-report-table th { background: #1a5c3e; color: white; font-weight: bold; text-align: center; font-size: ${detailSize}; padding: ${isHalf ? '0.25rem 0.3rem' : '0.4rem'}; border: 1px solid #1a5c3e; }
     .ps-report-table td { border: 1px solid #d1d5db; font-size: ${detailSize}; padding: ${isHalf ? '0.2rem 0.3rem' : '0.35rem'}; text-align: center; }
-    .ps-report-table tr:nth-child(even) td { background: #f9fafb; }
+    .ps-row-income td { background: #d4edda !important; }
+    .ps-row-expense td { background: #f8d7da !important; }
+    .ps-row-liability td { background: #fff3cd !important; }
     .ps-report-footer { text-align: center; font-size: ${noteSize}; color: #666; padding-top: ${isHalf ? '0.3rem' : '0.5rem'}; border-top: 1px solid #e5e7eb; margin-top: ${isHalf ? '0.3rem' : '0.5rem'}; }
+    .ps-totals { margin-top: ${isHalf ? '0.4rem' : '0.6rem'}; }
+    .ps-totals table { width: 100%; border-collapse: collapse; }
+    .ps-totals td { padding: ${isHalf ? '0.25rem 0.5rem' : '0.35rem 0.7rem'}; font-size: ${detailSize}; border: 1px solid #d1d5db; text-align: center; }
+    .ps-totals .label { font-weight: 700; text-align: right; }
+    .ps-totals .amount { font-weight: 700; text-align: left; direction: ltr; font-size: ${subtitleSize}; }
+    .ps-total-income { color: #155724; background: #d4edda; }
+    .ps-total-expense { color: #721c24; background: #f8d7da; }
+    .ps-total-net { color: #155724; background: #d4edda; }
     .ps-inv-header { font-size: ${detailSize}; font-weight: bold; text-align: center; padding: 0.3rem; color: #555; }
     .ps-inv-deficit { color: #dc2626; font-weight: 600; }
     .ps-inv-ok { color: #16a34a; font-weight: 600; }

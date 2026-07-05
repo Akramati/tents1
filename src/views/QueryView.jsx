@@ -612,21 +612,20 @@ export default function QueryView() {
                 const totalIncome = incomes.reduce((s, e) => s + e.amount, 0);
                 const totalExpense = expenses.reduce((s, e) => s + e.amount, 0);
                 const rows = [];
-                for (const e of incomes) rows.push([e.date, `ايراد`, formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, (e.notes||"").replace(/🔗تحويلة:\d+/g,"")]);
-                for (const e of expenses) rows.push([e.date, `مصروف ${acctName(e.accountCode) || e.accountCode}`, formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, ""]);
+                for (const e of incomes) rows.push({ cells: [e.date, "ايراد", formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, (e.notes||"").replace(/🔗تحويلة:\d+/g,"")], type: "income" });
+                for (const e of expenses) rows.push({ cells: [e.date, `مصروف ${acctName(e.accountCode) || e.accountCode}`, formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, ""], type: "expense" });
                 print("REPORT_TABLE", {
-                  title: `كشف حساب ${financeDetailBooking.bookingId} - ${financeDetailBooking.customerName}`,
-                  subtitle: `${financeDetailBooking.bookingType}`,
+                  title: `كشف حساب ${financeDetailBooking.customerName}`,
+                  dateHeader: new Date().toLocaleDateString("en-CA"),
+                  subtitle: `الحجز: ${financeDetailBooking.bookingId} | ${financeDetailBooking.bookingType}`,
                   summary: [
                     { label: "إجمالي الحجز", value: `${formatCurrency(financeDetailBooking.totalAmount)}` },
                     { label: "المدفوع", value: `${formatCurrency(financeDetailBooking.paidAmount)}` },
                     { label: "المتبقي", value: `${formatCurrency(financeDetailBooking.remainingAmount)}` },
-                    { label: "إجمالي الإيرادات", value: `${formatCurrency(totalIncome)}` },
-                    { label: "إجمالي المصاريف", value: `${formatCurrency(totalExpense)}` },
                   ],
                   headers: ["التاريخ", "النوع", "المبلغ", "الخزينة", "ملاحظات"],
                   rows,
-                  footer: `الصافي: ${formatCurrency(totalIncome - totalExpense)}`,
+                  totals: { income: formatCurrency(totalIncome), expense: formatCurrency(totalExpense), net: formatCurrency(totalIncome - totalExpense) },
                 });
               }}>
                 🖨️ طباعة كشف الحساب

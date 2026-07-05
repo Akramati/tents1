@@ -411,11 +411,24 @@ export default function ExpensesView() {
           <button className="btn btn-sm btn-gold" onClick={() => setShowAccountForm(!showAccountForm)}>📋 دليل الحسابات</button>
           <button className="btn btn-gold" onClick={() => {
             if (!filteredLedger.length) return;
+            const enrichNotes = (entry) => {
+              if (!entry.notes) return "-";
+              let n = entry.notes;
+              if (entry.linkedBookingId) {
+                const b = allBookings.find(bk => bk.bookingId === entry.linkedBookingId);
+                if (b) n = `${b.customerName} - ${n}`;
+              }
+              return n || "-";
+            };
             print("REPORT_TABLE", {
-              title: "كشف الحسابات",
-              headers: ["التاريخ", "من (دائن)", "إلى (مدين)", "المبلغ", "مركز التكلفة", "الخزينة", "البيان"],
-              rows: filteredLedger.map(e => [e.date || "-", e.entryType === "income" || e.entryType === "liability" ? acctName(e.accountCode) : acctName(e.cashAccountCode) || "-", e.entryType === "expense" ? acctName(e.accountCode) : acctName(e.cashAccountCode) || "-", formatCurrency(e.amount), costCenterLabel(e), acctName(e.cashAccountCode) || "-", e.notes || "-"]),
-              footer: `إيرادات: ${formatCurrency(totals.income)} | مصروفات: ${formatCurrency(totals.expense)}${totals.liability > 0 ? ` | عربون: ${formatCurrency(totals.liability)}` : ""} | الصافي: ${formatCurrency(totals.net)}`,
+              title: "دفتر اليومية",
+              dateHeader: filterDate || new Date().toLocaleDateString("en-CA"),
+              headers: ["التاريخ", "من (دائن)", "إلى (مدين)", "المبلغ", "الخزينة", "البيان"],
+              rows: filteredLedger.map(e => ({
+                cells: [e.date || "-", e.entryType === "income" || e.entryType === "liability" ? acctName(e.accountCode) : acctName(e.cashAccountCode) || "-", e.entryType === "expense" ? acctName(e.accountCode) : acctName(e.cashAccountCode) || "-", formatCurrency(e.amount), acctName(e.cashAccountCode) || "-", enrichNotes(e)],
+                type: e.entryType === "income" ? "income" : e.entryType === "expense" ? "expense" : "liability",
+              })),
+              totals: { income: formatCurrency(totals.income), expense: formatCurrency(totals.expense), liability: totals.liability > 0 ? formatCurrency(totals.liability) : undefined, net: formatCurrency(totals.net) },
             });
           }}>🖨️</button>
           <button className="btn btn-gold" onClick={() => handleExportCSV(filteredLedger)}>📥 CSV</button>
