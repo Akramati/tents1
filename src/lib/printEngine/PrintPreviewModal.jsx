@@ -53,12 +53,19 @@ export default function PrintPreviewModal({
     try {
       const origWidth = el.style.width;
       const isA5 = previewSettings.templateType === "A5";
+      const scrollEl = el.closest(".preview-scroll");
+      const origOverflow = scrollEl?.style.overflowY;
+      const origHeight = scrollEl?.style.height;
+      if (scrollEl) { scrollEl.style.overflowY = "visible"; scrollEl.style.height = "auto"; }
       el.style.width = isA5 ? "560px" : "794px";
       el.style.margin = "0 auto";
-      await new Promise(r => setTimeout(r, 50));
-      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      await new Promise(r => setTimeout(r, 200));
+      el.scrollTop = 0;
+      const rect = el.getBoundingClientRect();
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", height: rect.height, width: rect.width, y: 0, scrollY: 0 });
       el.style.width = origWidth || "";
       el.style.margin = "";
+      if (scrollEl) { scrollEl.style.overflowY = origOverflow || ""; scrollEl.style.height = origHeight || ""; }
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const pdf = new jsPDF("p", "mm", isA5 ? "a5" : "a4");
       const pageW = pdf.internal.pageSize.getWidth();
