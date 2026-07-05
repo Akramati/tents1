@@ -51,9 +51,16 @@ export default function PrintPreviewModal({
     setEmailSending(true);
     setEmailMsg(null);
     try {
+      const origWidth = el.style.width;
+      const isA5 = previewSettings.templateType === "A5";
+      el.style.width = isA5 ? "560px" : "794px";
+      el.style.margin = "0 auto";
+      await new Promise(r => setTimeout(r, 50));
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      el.style.width = origWidth || "";
+      el.style.margin = "";
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const pdf = new jsPDF("p", "mm", "a4");
+      const pdf = new jsPDF("p", "mm", isA5 ? "a5" : "a4");
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const imgH = (canvas.height * pageW) / canvas.width;
