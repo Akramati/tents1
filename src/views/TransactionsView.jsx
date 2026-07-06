@@ -95,9 +95,9 @@ export default function TransactionsView() {
     { id: "ربع سنوي", label: "ربع سنوي", values: ["الربع الأول (1-3)", "الربع الثاني (4-6)", "الربع الثالث (7-9)", "الربع الرابع (10-12)"] },
     { id: "شهري", label: "شهري", values: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"] },
   ];
+  const currentRentConfig = rentConfigs[rentAccountCode];
   const effectiveRentPeriodType = currentRentConfig?.periodType || "ربع سنوي";
   const rentPeriodLabel = currentRentConfig ? `${rentYear} - ${currentRentConfig.periodType} - ${rentPeriodVal}` : "";
-  const currentRentConfig = rentConfigs[rentAccountCode];
 
   const fetchRecent = async () => {
     try {
