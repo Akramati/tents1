@@ -85,7 +85,7 @@ const ReportTableLayout = forwardRef(({ data, settings, previewSettings }, ref) 
               )}
               {data.totals.expense !== undefined && (
                 <tr className="ps-total-expense">
-                  <td className="label">إجمالي المصروفات</td>
+                  <td className="label">{data.totalLabels?.expense || "إجمالي المصروفات"}</td>
                   <td className="amount">{data.totals.expense}</td>
                 </tr>
               )}
