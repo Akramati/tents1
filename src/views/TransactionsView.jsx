@@ -406,7 +406,10 @@ export default function TransactionsView() {
 
     setSubmitting(true);
     const tk = localStorage.getItem("token");
-    try {
+
+    const makeEntry = async (entryAmount, periodValOverride) => {
+      const pv = periodValOverride || rentPeriodVal;
+      const notesStr = opType === "rent" ? `إيجار - ${rentYear} - ${effectiveRentPeriodType} - ${pv} - ${notes}` : notes;
       const r = await fetch("/api/finance/ledger", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
@@ -414,13 +417,75 @@ export default function TransactionsView() {
           date: entryDate,
           accountCode,
           entryType,
-          amount: parseFloat(amount),
+          amount: entryAmount,
           cashAccountCode: cashAccount,
           branch: "DHM",
-          notes: opType === "rent" ? `إيجار - ${rentYear} - ${effectiveRentPeriodType} - ${rentPeriodVal} - ${notes}` : notes,
+          notes: notesStr,
         }),
       });
-      const d = await r.json();
+      return r.json();
+    };
+
+    const doRentSplit = async (totalAmount) => {
+      const perPeriod = currentRentConfig?.amountPerPeriod || 0;
+      if (perPeriod <= 0) {
+        const d = await makeEntry(totalAmount);
+        if (!d.success) throw new Error(d.error);
+        return d;
+      }
+      const vals = periodTypes.find(p => p.id === currentRentConfig.periodType)?.values || [];
+      const curIdx = vals.indexOf(rentPeriodVal);
+      if (curIdx < 0) {
+        const d = await makeEntry(totalAmount);
+        if (!d.success) throw new Error(d.error);
+        return d;
+      }
+
+      let remaining = totalAmount;
+      let lastResult = null;
+      const splitEntries = [];
+
+      for (let i = curIdx; i < vals.length && remaining > 0; i++) {
+        const pk = `${rentYear} - ${currentRentConfig.periodType} - ${vals[i]}`;
+        const paidSoFar = rentEntries.filter(e => (e.notes || "").includes(pk)).reduce((s, e) => s + (e.amount || 0), 0);
+        const need = Math.max(0, perPeriod - paidSoFar);
+        if (need <= 0) continue;
+        const payNow = Math.min(remaining, need);
+        splitEntries.push({ periodVal: vals[i], amount: payNow });
+        remaining -= payNow;
+      }
+      if (remaining > 0 && splitEntries.length > 0) {
+        splitEntries[splitEntries.length - 1].amount += remaining;
+        remaining = 0;
+      }
+
+      for (const se of splitEntries) {
+        lastResult = await makeEntry(se.amount, se.periodVal);
+        if (!lastResult.success) throw new Error(lastResult.error);
+      }
+      return lastResult;
+    };
+
+    try {
+      let d;
+      if (opType === "rent" && parseFloat(amount) > 0) {
+        d = await doRentSplit(parseFloat(amount));
+      } else {
+        const r = await fetch("/api/finance/ledger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+          body: JSON.stringify({
+            date: entryDate,
+            accountCode,
+            entryType,
+            amount: parseFloat(amount),
+            cashAccountCode: cashAccount,
+            branch: "DHM",
+            notes: opType === "rent" ? `إيجار - ${rentYear} - ${effectiveRentPeriodType} - ${rentPeriodVal} - ${notes}` : notes,
+          }),
+        });
+        d = await r.json();
+      }
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
