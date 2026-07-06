@@ -92,6 +92,7 @@ export default function TransactionsView() {
   const [editConfigAmount, setEditConfigAmount] = useState("");
   const periodTypes = [
     { id: "سنوي", label: "سنوي", values: ["السنة كاملة"] },
+    { id: "ثلث سنوي", label: "ثلث سنوي", values: ["الثلث الأول (1-4)", "الثلث الثاني (5-8)", "الثلث الثالث (9-12)"] },
     { id: "ربع سنوي", label: "ربع سنوي", values: ["الربع الأول (1-3)", "الربع الثاني (4-6)", "الربع الثالث (7-9)", "الربع الرابع (10-12)"] },
     { id: "شهري", label: "شهري", values: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"] },
   ];
@@ -734,7 +735,7 @@ export default function TransactionsView() {
                 {currentRentConfig && (
                   <div className="tx-rent-config-info">
                     <span className="tx-rent-config-label">
-                      {currentRentConfig.periodType === "سنوي" ? "سنوي" : currentRentConfig.periodType === "ربع سنوي" ? "ربع سنوي" : "شهري"}
+                      {currentRentConfig.periodType === "سنوي" ? "سنوي" : currentRentConfig.periodType === "ثلث سنوي" ? "ثلث سنوي" : currentRentConfig.periodType === "ربع سنوي" ? "ربع سنوي" : "شهري"}
                       {' | '}{formatCurrency(currentRentConfig.amountPerPeriod)} ريال/الفترة
                     </span>
                   </div>
