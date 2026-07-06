@@ -390,7 +390,7 @@ export default function TransactionsView() {
   };
 
   const handleEntrySubmit = async (e) => {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
     if (!amount || parseFloat(amount) <= 0) { setErrorMsg("المبلغ مطلوب"); return; }
     const op = operTypes.find(o => o.id === opType);
     if (!op) return;
@@ -783,7 +783,7 @@ export default function TransactionsView() {
                         const pk = `${rentYear} - ${currentRentConfig.periodType} - ${pv}`;
                         return rentEntries.filter(e => (e.notes || "").includes(pk)).reduce((s, e) => s + (e.amount || 0), 0) >= (currentRentConfig.amountPerPeriod || 0) && (currentRentConfig.amountPerPeriod || 0) > 0;
                       }) ? (
-                        <form onSubmit={handleEntrySubmit} className="tx-form" style={{ maxWidth: "100%", marginTop: "1rem" }}>
+                        <div className="tx-form" style={{ maxWidth: "100%", marginTop: "1rem" }}>
                           <div className="tx-auto-banner">
                             <span>💳 تسديد: </span>
                             <strong>{rentPeriodLabel}</strong>
@@ -833,12 +833,13 @@ export default function TransactionsView() {
                             </div>
                           )}
                           <div className="form-actions" style={{ marginTop: "1rem" }}>
-                            <button type="submit" className="btn btn-primary btn-lg"
+                            <button type="button" className="btn btn-primary btn-lg"
+                              onClick={handleEntrySubmit}
                               disabled={submitting || !amount || parseFloat(amount) <= 0}>
                               {submitting ? "..." : `💰 تسديد ${rentPeriodVal}`}
                             </button>
                           </div>
-                        </form>
+                        </div>
                       ) : (
                         <div className="tx-rent-complete">
                           <p>✅ تم إكمال جميع فترات {rentYear} في {acctName(rentAccountCode)} بنجاح.</p>
