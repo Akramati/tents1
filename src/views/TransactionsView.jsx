@@ -77,9 +77,20 @@ export default function TransactionsView() {
   const [rentAccountCode, setRentAccountCode] = useState("5005-01");
   const [rentYear, setRentYear] = useState(String(new Date().getFullYear()));
   const [rentPeriodType, setRentPeriodType] = useState("ربع سنوي");
-  const [rentPeriodVal, setRentPeriodVal] = useState("الربع الأول");
+  const [rentPeriodVal, setRentPeriodVal] = useState("الربع الأول (1-3)");
   const [rentViewMode, setRentViewMode] = useState("دفع");
   const [rentEntries, setRentEntries] = useState([]);
+  const [showRentConfig, setShowRentConfig] = useState(false);
+  const [rentConfigs, setRentConfigs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("rentConfigs") || "{}"); } catch { return {}; }
+  });
+  const saveRentConfigs = (cfg) => {
+    setRentConfigs(cfg);
+    localStorage.setItem("rentConfigs", JSON.stringify(cfg));
+  };
+  const [editConfigAcct, setEditConfigAcct] = useState("5005-01");
+  const [editConfigType, setEditConfigType] = useState("ربع سنوي");
+  const [editConfigAmount, setEditConfigAmount] = useState("");
   const periodTypes = [
     { id: "سنوي", label: "سنوي", values: ["السنة كاملة"] },
     { id: "ربع سنوي", label: "ربع سنوي", values: ["الربع الأول (1-3)", "الربع الثاني (4-6)", "الربع الثالث (7-9)", "الربع الرابع (10-12)"] },
@@ -87,6 +98,7 @@ export default function TransactionsView() {
   ];
   const periodTypeObj = periodTypes.find(p => p.id === rentPeriodType);
   const rentPeriodLabel = `${rentYear} - ${rentPeriodType} - ${rentPeriodVal}`;
+  const currentRentConfig = rentConfigs[rentAccountCode];
 
   const fetchRecent = async () => {
     try {
@@ -413,6 +425,7 @@ export default function TransactionsView() {
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
+        if (opType === "rent") setTimeout(() => fetchRentEntries(), 300);
       } else setErrorMsg(d.error);
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
@@ -615,107 +628,193 @@ export default function TransactionsView() {
           {opType === "rent" && (
             <div className="tx-customer-pay">
               {/* View mode tabs */}
-              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
                 <button type="button" className={`btn ${rentViewMode === "دفع" ? "btn-primary" : "btn-secondary"}`}
-                  onClick={() => { setRentViewMode("دفع"); fetchRentEntries(); }}>💰 دفع إيجار</button>
+                  onClick={() => setRentViewMode("دفع")}>💰 دفع إيجار</button>
                 <button type="button" className={`btn ${rentViewMode === "كشف" ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => { setRentViewMode("كشف"); fetchRentEntries(); }}>📋 كشف الإيجار</button>
+                <button type="button" className="btn btn-secondary" onClick={() => { setEditConfigAcct(rentAccountCode); setEditConfigType(currentRentConfig?.periodType || "ربع سنوي"); setEditConfigAmount(currentRentConfig?.amountPerPeriod || ""); setShowRentConfig(true); }}>⚙️ إعدادات</button>
               </div>
 
+              {/* Config modal */}
+              {showRentConfig && (
+                <div className="tx-modal-overlay" onClick={() => setShowRentConfig(false)}>
+                  <div className="tx-modal-box" onClick={e => e.stopPropagation()}>
+                    <div className="tx-modal-header">
+                      <strong>⚙️ إعداد الإيجار — {acctName(editConfigAcct)}</strong>
+                      <button type="button" className="tx-modal-close" onClick={() => setShowRentConfig(false)}>✕</button>
+                    </div>
+                    <div className="tx-modal-body">
+                      <div className="form-group">
+                        <label>🏢 الحساب</label>
+                        <select className="form-control" value={editConfigAcct} onChange={e => setEditConfigAcct(e.target.value)}>
+                          {rentAccounts.map(a => (
+                            <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ marginTop: "0.75rem" }}>
+                        <label>📆 نوع الفترة</label>
+                        <select className="form-control" value={editConfigType} onChange={e => setEditConfigType(e.target.value)}>
+                          {periodTypes.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ marginTop: "0.75rem" }}>
+                        <label>💰 قيمة الإيجار لكل فترة</label>
+                        <input type="number" step="0.01" min="0.01" className="form-control" value={editConfigAmount}
+                          onChange={e => setEditConfigAmount(e.target.value)} placeholder="مثلاً: 10000" />
+                      </div>
+                    </div>
+                    <div className="tx-modal-footer">
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowRentConfig(false)}>إلغاء</button>
+                      <button type="button" className="btn btn-primary" onClick={() => {
+                        const cfg = { ...rentConfigs };
+                        cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0 };
+                        saveRentConfigs(cfg);
+                        if (editConfigAcct === rentAccountCode) {
+                          setRentPeriodType(editConfigType);
+                          setRentPeriodVal(periodTypes.find(p => p.id === editConfigType)?.values[0] || "");
+                        }
+                        setShowRentConfig(false);
+                        setSuccessMsg(`✅ تم حفظ إعداد ${acctName(editConfigAcct)}`);
+                      }}>💾 حفظ الإعدادات</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {rentViewMode === "دفع" && (
-                <form onSubmit={handleEntrySubmit} className="tx-form" style={{ maxWidth: "100%" }}>
-                  <div className="tx-form-grid">
-                    {/* Account selector */}
+                <>
+                  {/* Account/Year selector + period cards */}
+                  <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
                     <div className="form-group">
-                      <label>🏢 حساب الإيجار</label>
-                      <select className="form-control" value={rentAccountCode} onChange={e => setRentAccountCode(e.target.value)}>
+                      <label>🏢 الحساب</label>
+                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); setRentPeriodType(rentConfigs[e.target.value]?.periodType || "ربع سنوي"); setRentPeriodVal(periodTypes.find(p => p.id === (rentConfigs[e.target.value]?.periodType || "ربع سنوي"))?.values[0] || ""); fetchRentEntries(); }}>
                         {rentAccounts.map(a => (
-                          <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
+                          <option key={a.accountCode} value={a.accountCode}>
+                            {a.accountName} ({a.accountCode}){rentConfigs[a.accountCode] ? ` - ${rentConfigs[a.accountCode].amountPerPeriod?.toLocaleString()} ريال/${rentConfigs[a.accountCode].periodType}` : " - بدون إعداد"}
+                          </option>
                         ))}
                       </select>
                     </div>
-                    {/* Year */}
                     <div className="form-group">
                       <label>📅 السنة</label>
-                      <select className="form-control" value={rentYear} onChange={e => setRentYear(e.target.value)}>
+                      <select className="form-control" value={rentYear} onChange={e => { setRentYear(e.target.value); fetchRentEntries(); }}>
                         {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 1 + i)).map(y => (
                           <option key={y} value={y}>{y}</option>
                         ))}
                       </select>
                     </div>
-                    {/* Period type */}
-                    <div className="form-group">
-                      <label>📆 نوع الفترة</label>
-                      <select className="form-control" value={rentPeriodType} onChange={e => { setRentPeriodType(e.target.value); setRentPeriodVal(periodTypes.find(p => p.id === e.target.value)?.values[0] || ""); }}>
-                        {periodTypes.map(p => (
-                          <option key={p.id} value={p.id}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {/* Period value */}
-                    <div className="form-group">
-                      <label>🗓️ الفترة</label>
-                      <select className="form-control" value={rentPeriodVal} onChange={e => setRentPeriodVal(e.target.value)}>
-                        {periodTypeObj?.values.map(v => (
-                          <option key={v} value={v}>{v}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {/* Cash account */}
-                    <div className="form-group">
-                      <label>🏦 الخزينة</label>
-                      <select className="form-control" value={cashAccount} onChange={e => setCashAccount(e.target.value)}>
-                        {cashAccounts.map(a => (
-                          <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
-                        ))}
-                      </select>
-                    </div>
-                    {/* Amount */}
-                    <div className="form-group">
-                      <label>💰 المبلغ <span className="required">*</span></label>
-                      <input type="number" step="0.01" min="0.01" className="form-control" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" required />
-                    </div>
-                    {/* Date */}
-                    <div className="form-group">
-                      <label>📅 التاريخ</label>
-                      <DualCalendarPicker value={entryDate} onChange={val => setEntryDate(val)} />
-                    </div>
-                    {/* Notes */}
-                    <div className="form-group full-width">
-                      <label>📝 البيان</label>
-                      <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder="اختياري..." />
-                    </div>
                   </div>
-                  {/* Preview */}
-                  {preview && (
-                    <div className="tx-preview">
-                      <div className="tx-preview-title">🧾 معاينة القيد — {rentPeriodLabel}</div>
-                      <div className="tx-preview-rows">
-                        <div className="tx-preview-row debit">
-                          <span className="tx-pr-side">مدين</span>
-                          <span className="tx-pr-acct">{preview.debit.code} — {preview.debit.name}</span>
-                          <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
-                        </div>
-                        <div className="tx-preview-row credit">
-                          <span className="tx-pr-side">دائن</span>
-                          <span className="tx-pr-acct">{preview.credit.code} — {preview.credit.name}</span>
-                          <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
-                        </div>
+
+                  {currentRentConfig ? (
+                    <>
+                      {/* Period progress cards */}
+                      <div className="tx-rent-periods">
+                        {periodTypes.find(p => p.id === currentRentConfig.periodType)?.values.map((pv, pi) => {
+                          const periodKey = `${rentYear} - ${currentRentConfig.periodType} - ${pv}`;
+                          const paid = rentEntries.filter(e => (e.notes || "").includes(periodKey)).reduce((s, e) => s + (e.amount || 0), 0);
+                          const target = currentRentConfig.amountPerPeriod || 0;
+                          const pct = target > 0 ? Math.min(100, Math.round((paid / target) * 100)) : 0;
+                          const isFullyPaid = target > 0 && paid >= target;
+                          const isActive = pv === rentPeriodVal;
+                          return (
+                            <div key={pv} className={`tx-rp-card ${isActive ? "active" : ""} ${isFullyPaid ? "paid" : ""}`}
+                              onClick={() => { if (isFullyPaid) return; setRentPeriodVal(pv); }}>
+                              <div className="tx-rp-header">
+                                <span className="tx-rp-name">{pv}</span>
+                                {isFullyPaid && <span className="tx-rp-badge">✅ مدفوع</span>}
+                                {isActive && !isFullyPaid && target > 0 && <span className="tx-rp-badge" style={{ background: "rgba(255,193,7,0.2)", color: "#ffc107" }}>الحالي</span>}
+                              </div>
+                              <div className="tx-rp-bar-wrap">
+                                <div className="tx-rp-bar" style={{ width: `${pct}%` }}></div>
+                              </div>
+                              <div className="tx-rp-footer">
+                                <span>مدفوع: {formatCurrency(paid)}</span>
+                                <span>المطلوب: {formatCurrency(target)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
+
+                      {/* Payment form for active period */}
+                      {!periodTypes.find(p => p.id === currentRentConfig.periodType)?.values.every(pv => {
+                        const pk = `${rentYear} - ${currentRentConfig.periodType} - ${pv}`;
+                        return rentEntries.filter(e => (e.notes || "").includes(pk)).reduce((s, e) => s + (e.amount || 0), 0) >= (currentRentConfig.amountPerPeriod || 0) && (currentRentConfig.amountPerPeriod || 0) > 0;
+                      }) ? (
+                        <form onSubmit={handleEntrySubmit} className="tx-form" style={{ maxWidth: "100%", marginTop: "1rem" }}>
+                          <div className="tx-auto-banner">
+                            <span>💳 تسديد: </span>
+                            <strong>{rentPeriodLabel}</strong>
+                            {currentRentConfig.amountPerPeriod > 0 && (
+                              <span style={{ marginRight: "1rem", opacity: 0.7 }}>
+                                — المتبقي: {formatCurrency(Math.max(0, currentRentConfig.amountPerPeriod - rentEntries.filter(e => (e.notes || "").includes(rentPeriodLabel)).reduce((s, e) => s + (e.amount || 0), 0)))}
+                              </span>
+                            )}
+                          </div>
+                          <div className="tx-form-grid">
+                            <div className="form-group">
+                              <label>🏦 الخزينة</label>
+                              <select className="form-control" value={cashAccount} onChange={e => setCashAccount(e.target.value)}>
+                                {cashAccounts.map(a => (
+                                  <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label>💰 المبلغ <span className="required">*</span></label>
+                              <input type="number" step="0.01" min="0.01" className="form-control" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" required />
+                            </div>
+                            <div className="form-group">
+                              <label>📅 التاريخ</label>
+                              <DualCalendarPicker value={entryDate} onChange={val => setEntryDate(val)} />
+                            </div>
+                            <div className="form-group full-width">
+                              <label>📝 البيان</label>
+                              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder="اختياري..." />
+                            </div>
+                          </div>
+                          {preview && (
+                            <div className="tx-preview">
+                              <div className="tx-preview-title">🧾 معاينة القيد</div>
+                              <div className="tx-preview-rows">
+                                <div className="tx-preview-row debit">
+                                  <span className="tx-pr-side">مدين</span>
+                                  <span className="tx-pr-acct">{preview.debit.code} — {preview.debit.name}</span>
+                                  <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
+                                </div>
+                                <div className="tx-preview-row credit">
+                                  <span className="tx-pr-side">دائن</span>
+                                  <span className="tx-pr-acct">{preview.credit.code} — {preview.credit.name}</span>
+                                  <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          <div className="form-actions" style={{ marginTop: "1rem" }}>
+                            <button type="submit" className="btn btn-primary btn-lg"
+                              disabled={submitting || !amount || parseFloat(amount) <= 0}>
+                              {submitting ? "..." : `💰 تسديد ${rentPeriodVal}`}
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="tx-rent-complete">
+                          <p>✅ تم إكمال جميع فترات {rentYear} في {acctName(rentAccountCode)} بنجاح.</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="tx-empty" style={{ padding: "1rem" }}>
+                      <p>⚠️ لم يتم إعداد هذا الحساب بعد. اضغط ⚙️ إعدادات لتحديد نوع الفترة وقيمة الإيجار.</p>
                     </div>
                   )}
-                  <div className="form-actions" style={{ marginTop: "1rem" }}>
-                    <button type="submit" className="btn btn-primary btn-lg"
-                      disabled={submitting || !amount || parseFloat(amount) <= 0}>
-                      {submitting ? "..." : `🏢 تسديد ${rentPeriodLabel}`}
-                    </button>
-                  </div>
-                </form>
+                </>
               )}
 
               {rentViewMode === "كشف" && (
                 <div className="tx-rent-statement">
-                  {/* Statement filters */}
                   <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
                     <div className="form-group">
                       <label>🏢 الحساب</label>
@@ -733,8 +832,15 @@ export default function TransactionsView() {
                         ))}
                       </select>
                     </div>
+                    <div className="form-group">
+                      <label>🗓️ الفترة</label>
+                      <select className="form-control" value={rentPeriodVal} onChange={e => setRentPeriodVal(e.target.value)}>
+                        {(currentRentConfig ? periodTypes.find(p => p.id === currentRentConfig.periodType)?.values : periodTypes[1].values)?.map(v => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  {/* Entries table */}
                   {rentEntries.length === 0 ? (
                     <div className="tx-empty" style={{ padding: "1rem" }}><p>لا توجد دفعات إيجار لهذا الحساب</p></div>
                   ) : (
@@ -751,30 +857,44 @@ export default function TransactionsView() {
                             </tr>
                           </thead>
                           <tbody>
-                            {rentEntries.map((e, i) => {
+                            {rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal)).map((e, i) => {
                               const noteParts = (e.notes || "").split(" - ");
-                              const period = noteParts.length > 1 ? noteParts[1] : "—";
                               const noteClean = noteParts.length > 2 ? noteParts.slice(2).join(" - ") : "—";
                               return (
                                 <tr key={e.journalId || i}>
                                   <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>{e.date || "—"}</td>
-                                  <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{period}</td>
+                                  <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{rentPeriodVal}</td>
                                   <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontWeight: 700, color: "#ef4444" }}>{formatCurrency(e.amount)}</td>
                                   <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.cashAccountCode)}</td>
-                                  <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{noteClean}</td>
+                                  <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{noteClean}</td>
                                 </tr>
                               );
                             })}
                           </tbody>
                         </table>
                       </div>
-                      <div style={{ marginTop: "0.75rem", textAlign: "center" }}>
-                        <strong>إجمالي المدفوع: {formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0))}</strong>
+                      <div style={{ marginTop: "0.75rem", display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
+                        <strong>مدفوع لهذه الفترة: {formatCurrency(rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal)).reduce((s, e) => s + (e.amount || 0), 0))}</strong>
+                        <strong>إجمالي {rentYear}: {formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0))}</strong>
                       </div>
                       <div style={{ marginTop: "0.5rem", textAlign: "center" }}>
                         <button type="button" className="btn btn-gold" onClick={() => {
+                          const periodFiltered = rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal));
                           print("REPORT_TABLE", {
                             title: `📋 كشف إيجار - ${acctName(rentAccountCode)}`,
+                            dateHeader: `${rentYear} - ${rentPeriodVal}`,
+                            headers: ["التاريخ", "الفترة", "المبلغ", "الخزينة", "البيان"],
+                            rows: periodFiltered.map(e => ({
+                              cells: [e.date || "—", rentPeriodVal, formatCurrency(e.amount), acctName(e.cashAccountCode), ((e.notes || "").split(" - ").slice(2).join(" - ")) || "—"],
+                              type: "expense",
+                            })),
+                            totalLabels: { expense: `إجمالي ${rentPeriodVal}` },
+                            totals: { expense: formatCurrency(periodFiltered.reduce((s, e) => s + (e.amount || 0), 0)) },
+                          });
+                        }}>🖨️ طباعة كشف الفترة</button>
+                        <button type="button" className="btn btn-gold" style={{ marginRight: "0.5rem" }} onClick={() => {
+                          print("REPORT_TABLE", {
+                            title: `📋 كشف إيجار سنوي - ${acctName(rentAccountCode)}`,
                             dateHeader: rentYear,
                             headers: ["التاريخ", "الفترة", "المبلغ", "الخزينة", "البيان"],
                             rows: rentEntries.map(e => {
@@ -784,10 +904,10 @@ export default function TransactionsView() {
                                 type: "expense",
                               };
                             }),
-                            totalLabels: { expense: "إجمالي الإيجار المدفوع" },
+                            totalLabels: { expense: `إجمالي الإيجار ${rentYear}` },
                             totals: { expense: formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0)) },
                           });
-                        }}>🖨️ طباعة الكشف</button>
+                        }}>🖨️ طباعة الكشف السنوي</button>
                       </div>
                     </>
                   )}
@@ -1627,6 +1747,62 @@ export default function TransactionsView() {
           font-size: 0.8rem;
           color: #22c55e;
           border-top: 1px solid var(--card-border);
+        }
+        .tx-rent-periods {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 0.6rem;
+          margin-bottom: 1rem;
+        }
+        .tx-rp-card {
+          border: 1px solid var(--card-border);
+          border-radius: var(--radius);
+          padding: 0.6rem 0.75rem;
+          background: var(--hover-bg);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .tx-rp-card:hover { border-color: var(--gold); }
+        .tx-rp-card.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+        .tx-rp-card.paid { opacity: 0.6; cursor: default; border-color: #22c55e; }
+        .tx-rp-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 0.4rem;
+        }
+        .tx-rp-name { font-weight: 600; font-size: 0.8rem; color: var(--foreground); }
+        .tx-rp-badge { font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: 600; background: rgba(34,197,94,0.2); color: #22c55e; }
+        .tx-rp-bar-wrap {
+          height: 6px;
+          background: rgba(255,255,255,0.1);
+          border-radius: 3px;
+          overflow: hidden;
+          margin-bottom: 0.35rem;
+        }
+        .tx-rp-bar {
+          height: 100%;
+          background: linear-gradient(90deg, var(--gold), #d4a843);
+          border-radius: 3px;
+          transition: width 0.3s;
+        }
+        .tx-rp-card.paid .tx-rp-bar { background: linear-gradient(90deg, #22c55e, #16a34a); }
+        .tx-rp-footer {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.68rem;
+          color: var(--foreground);
+          opacity: 0.7;
+        }
+        .tx-rent-complete {
+          text-align: center;
+          padding: 2rem;
+          border: 2px solid #22c55e;
+          border-radius: var(--radius);
+          background: rgba(34,197,94,0.05);
+          color: #22c55e;
+          font-size: 1rem;
+          font-weight: 600;
         }
       `}</style>
     </section>
