@@ -220,6 +220,7 @@ export default function TransactionsView() {
     setDebtorPayAmount("");
     setCustPayBooking(null);
     setCustPayAmount("");
+    if (id === "rent") fetchRentEntries();
   };
 
   const acctName = (code) => {
