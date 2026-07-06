@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
 
-export default function AdminReports() {
+export default function AdminReports({ embedded }) {
   const [authorized, setAuthorized] = useState(false);
   const [tab, setTab] = useState("pnl");
   const [pnl, setPnl] = useState(null);
@@ -12,6 +12,7 @@ export default function AdminReports() {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
+    if (embedded) { setAuthorized(true); loadPnl(); loadBs(); return; }
     const token = localStorage.getItem("token");
     if (!token) { window.location.href = "/login"; return; }
     fetch("/api/auth/verify", { headers: { Authorization: `Bearer ${token}` } })
@@ -65,7 +66,7 @@ export default function AdminReports() {
   );
 
   if (loading) return <div className="container" style={{ padding: "2rem", textAlign: "center" }}><p>جاري التحميل...</p></div>;
-  if (!authorized) return <div className="container" style={{ padding: "2rem", textAlign: "center" }}><h2>⛔ غير مصرح</h2><a href="/" style={{ color: "#059669" }}>← العودة</a></div>;
+  if (!authorized && !embedded) return <div className="container" style={{ padding: "2rem", textAlign: "center" }}><h2>⛔ غير مصرح</h2><a href="/" style={{ color: "#059669" }}>← العودة</a></div>;
 
   return (
     <div className="container">

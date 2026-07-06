@@ -12,6 +12,11 @@ import ExpensesView from "@/views/ExpensesView";
 import TransactionsView from "@/views/TransactionsView";
 import PaymentsView from "@/views/PaymentsView";
 import PaymentView from "@/views/PaymentView";
+import DashboardView from "@/views/DashboardView";
+import CancelView from "@/views/CancelView";
+import AdminConfig from "@/app/admin/config/page";
+import AdminFinance from "@/app/admin/finance/page";
+import AdminReports from "@/app/admin/reports/page";
 
 const OP_VIEWS = [
   { key: "query", label: "الحجوزات والاستعلام", icon: "🔍", adminOnly: false },
@@ -22,9 +27,14 @@ const OP_VIEWS = [
   { key: "divider", label: "", icon: "", adminOnly: true, divider: true },
   { key: "packages", label: "الباقات", icon: "🎁", adminOnly: true },
   { key: "expenses", label: "المصروفات", icon: "💸", adminOnly: true },
-  { key: "profitloss", label: "الأرباح والخسائر", icon: "📊", adminOnly: true },
   { key: "transactions", label: "العمليات المالية", icon: "💰", adminOnly: true },
   { key: "payments", label: "سندات الصرف", icon: "💳", adminOnly: true },
+  { key: "admin-config", label: "الإعدادات", icon: "⚙️", adminOnly: true, sub: "الأنواع والرسائل والحقول" },
+  { key: "admin-finance", label: "الفروع والتكاليف", icon: "🏛️", adminOnly: true, sub: "الفروع ومراكز التكلفة" },
+  { key: "admin-reports", label: "التقارير المالية", icon: "📊", adminOnly: true, sub: "قائمة الدخل والميزانية" },
+  { key: "divider2", label: "", icon: "", adminOnly: false, divider: true },
+  { key: "dashboard", label: "لوحة المعلومات", icon: "📈", adminOnly: false, sub: "ملخص ونظرة سريعة" },
+  { key: "cancel", label: "إدارة الإلغاء", icon: "❌", adminOnly: false, sub: "إلغاء الحجوزات وتسويتها" },
   { key: "payment", label: "تسجيل دفعة", icon: "💰", hidden: true, adminOnly: false },
 ];
 
@@ -90,12 +100,15 @@ export default function OperationsWorkspace() {
           {isAdmin && <span className="ops-sidebar-badge">مدير</span>}
         </div>
         {visibleViews.map(v => v.divider ? (
-          <div key="divider" className="ops-sidebar-divider" />
+          <div key={v.key || "divider"} className="ops-sidebar-divider" />
         ) : (
           <button key={v.key} className={`ops-sidebar-btn ${activeView === v.key ? "active" : ""}`}
             onClick={() => selectView(v.key)}>
             <span className="ops-sidebar-icon">{v.icon}</span>
-            <span className="ops-sidebar-label">{v.label}</span>
+            <span className="ops-sidebar-btn-inner">
+              <span className="ops-sidebar-label">{v.label}</span>
+              {v.sub && <span className="ops-sidebar-sub">{v.sub}</span>}
+            </span>
           </button>
         ))}
       </div>
@@ -110,10 +123,12 @@ export default function OperationsWorkspace() {
         {isAdmin && activeView === "packages" && <PackagesView />}
         {isAdmin && activeView === "expenses" && <ExpensesView />}
         {isAdmin && activeView === "transactions" && <TransactionsView />}
-        {isAdmin && activeView === "profitloss" && (
-          <ProfitLossView pnlData={pnlData} pnlLoading={pnlLoading} fetchProfitLoss={fetchProfitLoss} print={print} />
-        )}
         {isAdmin && activeView === "payments" && <PaymentsView />}
+        {isAdmin && activeView === "admin-config" && <AdminConfig embedded />}
+        {isAdmin && activeView === "admin-finance" && <AdminFinance embedded />}
+        {isAdmin && activeView === "admin-reports" && <AdminReports embedded />}
+        {activeView === "dashboard" && <DashboardView onNavigate={(key) => selectView(key)} />}
+        {activeView === "cancel" && <CancelView />}
         {activeView === "payment" && <PaymentView />}
       </div>
     </div>

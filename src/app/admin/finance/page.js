@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 
-export default function AdminFinance() {
+export default function AdminFinance({ embedded }) {
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
@@ -9,11 +9,12 @@ export default function AdminFinance() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState({});
-  const [selectedNode, setSelectedNode] = useState(null); // { type: "branch"|"vehicle"|"booking"|"admin"|"addBranch"|"addCenter", code, name, data? }
+  const [selectedNode, setSelectedNode] = useState(null);
   const [form, setForm] = useState({ code: "", name: "", type: "vehicle" });
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
+    if (embedded) { setAuthorized(true); setLoading(false); loadData(); return; }
     const token = localStorage.getItem("token");
     if (!token) { window.location.href = "/login"; return; }
     fetch("/api/auth/verify", { headers: { Authorization: `Bearer ${token}` } })
@@ -146,7 +147,7 @@ export default function AdminFinance() {
     return <div style={{ padding: "2rem", textAlign: "center" }}><p>جاري التحميل...</p></div>;
   }
 
-  if (!authorized) {
+  if (!authorized && !embedded) {
     return (
       <div style={{ padding: "2rem", textAlign: "center" }}>
         <h2>⛔ غير مصرح</h2>

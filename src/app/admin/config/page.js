@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 
-export default function AdminConfig() {
+export default function AdminConfig({ embedded }) {
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [types, setTypes] = useState([]);
@@ -26,6 +26,7 @@ export default function AdminConfig() {
   const [editingAcct, setEditingAcct] = useState(null);
 
   useEffect(() => {
+    if (embedded) { setAuthorized(true); loadData(); return; }
     const token = localStorage.getItem("token");
     if (!token) { window.location.href = "/login"; return; }
     fetch("/api/auth/verify", { headers: { Authorization: `Bearer ${token}` } })
@@ -217,7 +218,7 @@ export default function AdminConfig() {
     return <div style={{ padding: "2rem", textAlign: "center" }}><p>جاري التحميل...</p></div>;
   }
 
-  if (!authorized) {
+  if (!authorized && !embedded) {
     return (
       <div style={{ padding: "2rem", textAlign: "center" }}>
         <h2>⛔ غير مصرح</h2>
