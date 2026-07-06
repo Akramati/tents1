@@ -12,6 +12,8 @@ const CATEGORIES = [
 const OP_TYPES = {
   expense: [
     { id: "withdrawal", label: "مسحوبات المالك", icon: "👤", desc: "سحب نقدي من صاحب المؤسسة", debitAuto: "2203", entryType: "expense" },
+    { id: "rent", label: "إيجار", icon: "🏢", desc: "إيجار منشأة أو أرض", debitAuto: "5005", entryType: "expense" },
+    { id: "salaries", label: "رواتب", icon: "👥", desc: "صرف رواتب الموظفين", debitAuto: "5004", entryType: "expense" },
     { id: "general", label: "مصروف عام", icon: "📋", desc: "اختر حساب المصروف", entryType: "expense" },
   ],
   income: [
@@ -20,6 +22,7 @@ const OP_TYPES = {
   ],
 };
 
+const isFixedExpense = (t) => t === "withdrawal" || t === "rent" || t === "salaries";
 export default function TransactionsView() {
   const { formatCurrency, setSuccessMsg, setErrorMsg, getTodayString, print, userRole } = useApp();
   const [category, setCategory] = useState("expense");
@@ -66,8 +69,20 @@ export default function TransactionsView() {
   const [custPayAmount, setCustPayAmount] = useState("");
   const [custPaySaving, setCustPaySaving] = useState(false);
 
+  // Recent transactions log
+  const [recentEntries, setRecentEntries] = useState([]);
+
+  const fetchRecent = async () => {
+    try {
+      const r = await fetch("/api/finance/ledger?limit=15");
+      const d = await r.json();
+      if (d.success) setRecentEntries(d.entries || []);
+    } catch {}
+  };
+
   useEffect(() => {
     fetchAccounts();
+    fetchRecent();
     fetch("/api/bookings?limit=1000").then(r => r.json()).then(d => {
       if (d.success) setAllBookings(d.bookings || []);
     }).catch(() => {});
@@ -194,6 +209,9 @@ export default function TransactionsView() {
       const wa = accounts.find(a => a.accountCode === wdAccount);
       return { debit: { code: wdAccount, name: wa?.accountName || "مسحوبات المالك" }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
     }
+    if (opType === "rent" || opType === "salaries") {
+      return { debit: { code: op.debitAuto, name: acctName(op.debitAuto) }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
+    }
     if (opType === "general") {
       if (!expenseAccount) return null;
       return { debit: { code: expenseAccount.accountCode, name: expenseAccount.accountName }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
@@ -219,7 +237,7 @@ export default function TransactionsView() {
       const d = await r.json();
       if (d.success) {
         setSuccessMsg(`تم التحويل: ${parseFloat(amount).toLocaleString()} ريال`);
-        setAmount(""); setNotes("");
+        setAmount(""); setNotes(""); fetchRecent();
       } else setErrorMsg(d.error);
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
@@ -331,6 +349,7 @@ export default function TransactionsView() {
         setCustPayAmount("");
         setNotes("");
         setCustPayBooking(null);
+        fetchRecent();
         // Refresh bookings
         const res = await fetch("/api/bookings?limit=1000");
         const data = await res.json();
@@ -348,7 +367,10 @@ export default function TransactionsView() {
 
     if (opType === "general" && !expenseAccount) { setErrorMsg("اختر حساب المصروف"); return; }
 
-    const accountCode = opType === "withdrawal" ? wdAccount : expenseAccount.accountCode;
+    let accountCode;
+    if (opType === "withdrawal") accountCode = wdAccount;
+    else if (opType === "rent" || opType === "salaries") accountCode = op.debitAuto;
+    else accountCode = expenseAccount.accountCode;
     const entryType = op.entryType;
 
     setSubmitting(true);
@@ -370,7 +392,7 @@ export default function TransactionsView() {
       const d = await r.json();
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
-        setAmount(""); setNotes(""); setExpenseAccount(null);
+        setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
       } else setErrorMsg(d.error);
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
@@ -470,7 +492,7 @@ export default function TransactionsView() {
               </div>
             </div>
           )}
-          {(opType === "general" || opType === "withdrawal") && (
+          {(isFixedExpense(opType) || opType === "general") && (
             <>
               <div className="tx-form-grid">
                 {(opType === "general") && (
@@ -500,6 +522,12 @@ export default function TransactionsView() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+                {(opType === "rent" || opType === "salaries") && (
+                  <div className="tx-auto-banner" style={{ gridColumn: "1 / -1" }}>
+                    <span>🏦 حساب تلقائي: </span>
+                    <strong>{op.debitAuto} — {acctName(op.debitAuto)}</strong>
                   </div>
                 )}
                 <div className="form-group">
@@ -543,7 +571,7 @@ export default function TransactionsView() {
               )}
               <div className="form-actions" style={{ marginTop: "1rem" }}>
                 <button type="submit" className="btn btn-primary btn-lg" disabled={submitting || !amount || parseFloat(amount) <= 0}>
-                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : "🔴 تسجيل مصروف عام"}
+                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : opType === "rent" ? "🏢 تسجيل إيجار" : opType === "salaries" ? "👥 تسجيل رواتب" : "🔴 تسجيل مصروف عام"}
                 </button>
               </div>
             </>
@@ -924,6 +952,50 @@ export default function TransactionsView() {
                 {debtorPaySaving ? "..." : "تأكيد الدفع"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent transactions */}
+      {recentEntries.length > 0 && (
+        <div className="tx-recent" style={{ marginTop: "2rem" }}>
+          <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem", color: "var(--foreground)" }}>📋 سجل آخر العمليات</h3>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tx-recent-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+              <thead>
+                <tr>
+                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center", fontWeight: 600 }}>التاريخ</th>
+                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center", fontWeight: 600 }}>الحساب</th>
+                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center", fontWeight: 600 }}>النوع</th>
+                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center", fontWeight: 600 }}>المبلغ</th>
+                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center", fontWeight: 600 }}>البيان</th>
+                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center", fontWeight: 600 }}>الخزينة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentEntries.map((e, i) => (
+                  <tr key={e.journalId || i}>
+                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>{e.date || "—"}</td>
+                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.accountCode)} ({e.accountCode})</td>
+                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>
+                      <span style={{
+                        padding: "0.15rem 0.4rem", borderRadius: 4, fontSize: "0.7rem", fontWeight: 600,
+                        background: e.entryType === "income" ? "rgba(34,197,94,0.2)" : e.entryType === "expense" ? "rgba(239,68,68,0.2)" : "rgba(255,193,7,0.2)",
+                        color: e.entryType === "income" ? "#22c55e" : e.entryType === "expense" ? "#ef4444" : "#ffc107",
+                      }}>
+                        {e.entryType === "income" ? "ايراد" : e.entryType === "expense" ? "مصروف" : e.entryType === "liability" ? "مطلوبات" : e.entryType === "transfer" ? "تحويل" : e.entryType}
+                      </span>
+                    </td>
+                    <td style={{
+                      padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontWeight: 700,
+                      color: e.entryType === "income" ? "#22c55e" : e.entryType === "expense" ? "#ef4444" : "inherit",
+                    }}>{formatCurrency(e.amount)}</td>
+                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.notes || "—"}</td>
+                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.cashAccountCode)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
