@@ -76,7 +76,6 @@ export default function TransactionsView() {
   const rentAccounts = useMemo(() => accounts.filter(a => a.parentCode === "5005" && a.isActive !== false), [accounts]);
   const [rentAccountCode, setRentAccountCode] = useState("5005-01");
   const [rentYear, setRentYear] = useState(String(new Date().getFullYear()));
-  const [rentPeriodType, setRentPeriodType] = useState("ربع سنوي");
   const [rentPeriodVal, setRentPeriodVal] = useState("الربع الأول (1-3)");
   const [rentViewMode, setRentViewMode] = useState("دفع");
   const [rentEntries, setRentEntries] = useState([]);
@@ -96,8 +95,8 @@ export default function TransactionsView() {
     { id: "ربع سنوي", label: "ربع سنوي", values: ["الربع الأول (1-3)", "الربع الثاني (4-6)", "الربع الثالث (7-9)", "الربع الرابع (10-12)"] },
     { id: "شهري", label: "شهري", values: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"] },
   ];
-  const periodTypeObj = periodTypes.find(p => p.id === rentPeriodType);
-  const rentPeriodLabel = `${rentYear} - ${rentPeriodType} - ${rentPeriodVal}`;
+  const effectiveRentPeriodType = currentRentConfig?.periodType || "ربع سنوي";
+  const rentPeriodLabel = currentRentConfig ? `${rentYear} - ${currentRentConfig.periodType} - ${rentPeriodVal}` : "";
   const currentRentConfig = rentConfigs[rentAccountCode];
 
   const fetchRecent = async () => {
@@ -418,14 +417,42 @@ export default function TransactionsView() {
           amount: parseFloat(amount),
           cashAccountCode: cashAccount,
           branch: "DHM",
-          notes: opType === "rent" ? `إيجار - ${rentPeriodLabel} - ${notes}` : notes,
+          notes: opType === "rent" ? `إيجار - ${rentYear} - ${effectiveRentPeriodType} - ${rentPeriodVal} - ${notes}` : notes,
         }),
       });
       const d = await r.json();
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
-        if (opType === "rent") setTimeout(() => fetchRentEntries(), 300);
+        if (opType === "rent") {
+          // Refresh entries then auto-advance to next unpaid period
+          setTimeout(async () => {
+            await fetchRentEntries();
+            if (currentRentConfig) {
+              const vals = periodTypes.find(p => p.id === currentRentConfig.periodType)?.values || [];
+              const curIdx = vals.indexOf(rentPeriodVal);
+              if (curIdx >= 0 && curIdx < vals.length - 1) {
+                // Check if current period is now fully paid
+                const r2 = await fetch(`/api/finance/ledger?accountCode=${rentAccountCode}&limit=200`);
+                const d2 = await r2.json();
+                const updatedEntries = (d2.entries || []).filter(e => (e.notes || "").includes(rentYear));
+                setRentEntries(updatedEntries);
+                const curKey = `${rentYear} - ${currentRentConfig.periodType} - ${rentPeriodVal}`;
+                const curPaid = updatedEntries.filter(e => (e.notes || "").includes(curKey)).reduce((s, e) => s + (e.amount || 0), 0);
+                if (curPaid >= (currentRentConfig.amountPerPeriod || 0)) {
+                  for (let i = curIdx + 1; i < vals.length; i++) {
+                    const nk = `${rentYear} - ${currentRentConfig.periodType} - ${vals[i]}`;
+                    const np = updatedEntries.filter(e => (e.notes || "").includes(nk)).reduce((s, e) => s + (e.amount || 0), 0);
+                    if (np < (currentRentConfig.amountPerPeriod || 0)) {
+                      setRentPeriodVal(vals[i]);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }, 300);
+        }
       } else setErrorMsg(d.error);
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
@@ -633,7 +660,20 @@ export default function TransactionsView() {
                   onClick={() => setRentViewMode("دفع")}>💰 دفع إيجار</button>
                 <button type="button" className={`btn ${rentViewMode === "كشف" ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => { setRentViewMode("كشف"); fetchRentEntries(); }}>📋 كشف الإيجار</button>
-                <button type="button" className="btn btn-secondary" onClick={() => { setEditConfigAcct(rentAccountCode); setEditConfigType(currentRentConfig?.periodType || "ربع سنوي"); setEditConfigAmount(currentRentConfig?.amountPerPeriod || ""); setShowRentConfig(true); }}>⚙️ إعدادات</button>
+                <button type="button" className="btn btn-secondary" onClick={() => {
+                  setEditConfigAcct(rentAccountCode);
+                  setEditConfigType(currentRentConfig?.periodType || "ربع سنوي");
+                  setEditConfigAmount(currentRentConfig?.amountPerPeriod || "");
+                  setShowRentConfig(true);
+                }}>⚙️ {currentRentConfig ? "تعديل الإعدادات" : "إعدادات"}</button>
+                {currentRentConfig && (
+                  <div className="tx-rent-config-info">
+                    <span className="tx-rent-config-label">
+                      {currentRentConfig.periodType === "سنوي" ? "سنوي" : currentRentConfig.periodType === "ربع سنوي" ? "ربع سنوي" : "شهري"}
+                      {' | '}{formatCurrency(currentRentConfig.amountPerPeriod)} ريال/الفترة
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Config modal */}
@@ -672,8 +712,8 @@ export default function TransactionsView() {
                         cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0 };
                         saveRentConfigs(cfg);
                         if (editConfigAcct === rentAccountCode) {
-                          setRentPeriodType(editConfigType);
                           setRentPeriodVal(periodTypes.find(p => p.id === editConfigType)?.values[0] || "");
+                          fetchRentEntries();
                         }
                         setShowRentConfig(false);
                         setSuccessMsg(`✅ تم حفظ إعداد ${acctName(editConfigAcct)}`);
@@ -689,7 +729,7 @@ export default function TransactionsView() {
                   <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
                     <div className="form-group">
                       <label>🏢 الحساب</label>
-                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); setRentPeriodType(rentConfigs[e.target.value]?.periodType || "ربع سنوي"); setRentPeriodVal(periodTypes.find(p => p.id === (rentConfigs[e.target.value]?.periodType || "ربع سنوي"))?.values[0] || ""); fetchRentEntries(); }}>
+                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); setRentPeriodVal(periodTypes.find(p => p.id === (rentConfigs[e.target.value]?.periodType || "ربع سنوي"))?.values[0] || ""); fetchRentEntries(); }}>
                         {rentAccounts.map(a => (
                           <option key={a.accountCode} value={a.accountCode}>
                             {a.accountName} ({a.accountCode}){rentConfigs[a.accountCode] ? ` - ${rentConfigs[a.accountCode].amountPerPeriod?.toLocaleString()} ريال/${rentConfigs[a.accountCode].periodType}` : " - بدون إعداد"}
