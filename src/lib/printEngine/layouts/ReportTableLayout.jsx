@@ -91,7 +91,7 @@ const ReportTableLayout = forwardRef(({ data, settings, previewSettings }, ref) 
               )}
               {data.totals.liability !== undefined && data.totals.liability > 0 && (
                 <tr className="ps-total-income">
-                  <td className="label">عربون (مطلوبات)</td>
+                  <td className="label">{data.totalLabels?.liability || "عربون (مطلوبات)"}</td>
                   <td className="amount">{data.totals.liability}</td>
                 </tr>
               )}

@@ -15,12 +15,13 @@ const OP_TYPES = {
     { id: "general", label: "مصروف عام", icon: "📋", desc: "اختر حساب المصروف", entryType: "expense" },
   ],
   income: [
-    { id: "customer", label: "تحصيل من عميل", icon: "👥", desc: "تسديد ذمم عميل", creditAuto: "1202", entryType: "income" },
+    { id: "customer", label: "تحصيل من عميل", icon: "👤", desc: "تسديد ذمم عميل", creditAuto: "1202", entryType: "income" },
+    { id: "debtors", label: "قائمة المديونيات", icon: "📋", desc: "عرض وطباعة واتصال" },
   ],
 };
 
 export default function TransactionsView() {
-  const { formatCurrency, setSuccessMsg, setErrorMsg, getTodayString } = useApp();
+  const { formatCurrency, setSuccessMsg, setErrorMsg, getTodayString, print, userRole } = useApp();
   const [category, setCategory] = useState("expense");
   const [opType, setOpType] = useState(null);
   const [accounts, setAccounts] = useState([]);
@@ -47,6 +48,23 @@ export default function TransactionsView() {
   // Withdrawal sub-account (hierarchical)
   const [wdPath, setWdPath] = useState([{ code: "2203", name: "مسحوبات المالك" }]);
   const [wdAccount, setWdAccount] = useState("2203");
+
+  // Debtor management
+  const [debtorSearch, setDebtorSearch] = useState("");
+  const [selectedDebtor, setSelectedDebtor] = useState(null);
+  const [debtorPayBooking, setDebtorPayBooking] = useState(null);
+  const [debtorPayAmount, setDebtorPayAmount] = useState("");
+  const [debtorPayDate, setDebtorPayDate] = useState(getTodayString?.() || new Date().toLocaleDateString("en-CA"));
+  const [debtorPaySaving, setDebtorPaySaving] = useState(false);
+  const [showMsgMenu, setShowMsgMenu] = useState(false);
+  const [msgSending, setMsgSending] = useState(false);
+  const msgNote = "نرجو تسديد ما تبقى عندكم. ولكم جزيل الشكر.";
+  const composeMsg = (name, amount) => `عزيزي ${name}،\nالمبلغ المتبقي في ذمتكم: ${amount.toLocaleString()} ريال.\n${msgNote}`;
+
+  // Customer booking payment
+  const [custPayBooking, setCustPayBooking] = useState(null);
+  const [custPayAmount, setCustPayAmount] = useState("");
+  const [custPaySaving, setCustPaySaving] = useState(false);
 
   useEffect(() => {
     fetchAccounts();
@@ -79,6 +97,33 @@ export default function TransactionsView() {
     return wdChildren(wdPath[wdPath.length - 1].code);
   }, [accounts, wdPath]);
 
+  const debtorData = useMemo(() => {
+    const map = {};
+    for (const b of allBookings) {
+      const remaining = (b.remainingAmount || 0);
+      if (remaining <= 0) continue;
+      if (b.status !== "مكتمل" && b.status !== "منتهي") continue;
+      const key = `${(b.customerName || "").trim()}|${(b.customerPhone || "").trim()}`;
+      if (!map[key]) {
+        map[key] = { customerName: b.customerName || "", customerPhone: b.customerPhone || "", bookings: [], totalRemaining: 0, totalAmount: 0, totalPaid: 0 };
+      }
+      map[key].bookings.push(b);
+      map[key].totalRemaining += remaining;
+      map[key].totalAmount += b.totalAmount || 0;
+      map[key].totalPaid += b.paidAmount || 0;
+    }
+    return Object.values(map).sort((a, b) => b.totalRemaining - a.totalRemaining);
+  }, [allBookings]);
+
+  const filteredDebtors = useMemo(() => {
+    if (!debtorSearch.trim()) return debtorData;
+    const q = debtorSearch.trim().toLowerCase();
+    return debtorData.filter(d =>
+      d.customerName.toLowerCase().includes(q) ||
+      (d.customerPhone || "").includes(q)
+    );
+  }, [debtorData, debtorSearch]);
+
   const filteredExpense = useMemo(() => {
     if (!expenseSearch.trim()) return expenseAccounts;
     const q = expenseSearch.trim().toLowerCase();
@@ -103,6 +148,18 @@ export default function TransactionsView() {
     return unique.slice(0, 20);
   }, [allBookings, customerSearch]);
 
+  const customerActiveBookings = useMemo(() => {
+    if (!selectedCustomer) return [];
+    const name = selectedCustomer.customerName;
+    const phone = selectedCustomer.customerPhone || "";
+    return allBookings.filter(b =>
+      b.customerName === name &&
+      (b.customerPhone || "") === phone &&
+      b.status !== "مكتمل" &&
+      b.status !== "ملغي"
+    );
+  }, [allBookings, selectedCustomer]);
+
   const operTypes = OP_TYPES[category] || [];
 
   const selectOpType = (id) => {
@@ -115,6 +172,11 @@ export default function TransactionsView() {
     setCustomerSearch("");
     setWdPath([{ code: "2203", name: "مسحوبات المالك" }]);
     setWdAccount("2203");
+    setDebtorSearch("");
+    setSelectedDebtor(null);
+    setDebtorPayAmount("");
+    setCustPayBooking(null);
+    setCustPayAmount("");
   };
 
   const acctName = (code) => {
@@ -163,6 +225,121 @@ export default function TransactionsView() {
     setSubmitting(false);
   };
 
+  const handleDebtorPayment = async (booking) => {
+    if (!debtorPayAmount || parseFloat(debtorPayAmount) <= 0) { setErrorMsg("المبلغ مطلوب"); return; }
+    if (!selectedDebtor) return;
+    const amt = parseFloat(debtorPayAmount);
+    if (amt > (booking.remainingAmount || 0)) { setErrorMsg("المبلغ أكبر من المتبقي"); return; }
+    setDebtorPaySaving(true);
+    const tk = localStorage.getItem("token");
+    try {
+      const r = await fetch("/api/bookings/payment", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+        body: JSON.stringify({
+          bookingId: booking.bookingId,
+          amount: amt,
+          cashAccountCode: cashAccount,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setSuccessMsg(`✅ تم تسجيل ${amt.toLocaleString()} ريال من ${selectedDebtor.customerName}`);
+        setDebtorPayAmount("");
+        // Refresh bookings
+        const res = await fetch("/api/bookings?limit=1000");
+        const data = await res.json();
+        if (data.success) setAllBookings(data.bookings || []);
+      } else setErrorMsg(d.error);
+    } catch { setErrorMsg("خطأ في الاتصال"); }
+    setDebtorPaySaving(false);
+  };
+
+  const sendDebtorMsg = (debtor, mode) => {
+    const phone = debtor.customerPhone;
+    if (!phone) { setErrorMsg("لا يوجد رقم جوال للعميل"); return; }
+    const msg = encodeURIComponent(composeMsg(debtor.customerName, debtor.totalRemaining));
+    const cleanPhone = phone.replace(/^0+/, "966");
+    if (mode === "whatsapp") {
+      window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
+    } else {
+      window.location.href = `sms:${phone}?body=${msg}`;
+    }
+  };
+
+  const sendBulkMsg = async (mode) => {
+    const list = filteredDebtors.filter(d => d.customerPhone);
+    if (list.length === 0) { setErrorMsg("لا يوجد عملاء بأرقام جوال"); return; }
+    setMsgSending(true);
+    for (let i = 0; i < list.length; i++) {
+      const d = list[i];
+      const phone = d.customerPhone;
+      const msg = encodeURIComponent(composeMsg(d.customerName, d.totalRemaining));
+      const cleanPhone = phone.replace(/^0+/, "966");
+      if (mode === "whatsapp") {
+        window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
+      } else {
+        window.open(`sms:${phone}?body=${msg}`, "_self");
+      }
+      // Small delay between opens
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setMsgSending(false);
+    setShowMsgMenu(false);
+  };
+
+  const sendFallbackMsg = async () => {
+    const list = filteredDebtors.filter(d => d.customerPhone);
+    if (list.length === 0) { setErrorMsg("لا يوجد عملاء بأرقام جوال"); return; }
+    setMsgSending(true);
+    for (let i = 0; i < list.length; i++) {
+      const d = list[i];
+      const phone = d.customerPhone;
+      const msg = encodeURIComponent(composeMsg(d.customerName, d.totalRemaining));
+      const cleanPhone = phone.replace(/^0+/, "966");
+      // Try WhatsApp first
+      window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
+      await new Promise(r => setTimeout(r, 300));
+      // Then SMS
+      window.open(`sms:${phone}?body=${msg}`, "_self");
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setMsgSending(false);
+    setShowMsgMenu(false);
+  };
+
+  const handleCustomerPayment = async (booking) => {
+    if (!custPayAmount || parseFloat(custPayAmount) <= 0) { setErrorMsg("المبلغ مطلوب"); return; }
+    if (!selectedCustomer) return;
+    const amt = parseFloat(custPayAmount);
+    if (amt > (booking.remainingAmount || 0)) { setErrorMsg("المبلغ أكبر من المتبقي"); return; }
+    setCustPaySaving(true);
+    const tk = localStorage.getItem("token");
+    try {
+      const r = await fetch("/api/bookings/payment", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+        body: JSON.stringify({
+          bookingId: booking.bookingId,
+          amount: amt,
+          cashAccountCode: cashAccount,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setSuccessMsg(`✅ تم تحصيل ${amt.toLocaleString()} ريال من ${selectedCustomer.customerName}`);
+        setCustPayAmount("");
+        setNotes("");
+        setCustPayBooking(null);
+        // Refresh bookings
+        const res = await fetch("/api/bookings?limit=1000");
+        const data = await res.json();
+        if (data.success) setAllBookings(data.bookings || []);
+      } else setErrorMsg(d.error);
+    } catch { setErrorMsg("خطأ في الاتصال"); }
+    setCustPaySaving(false);
+  };
+
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
     if (!amount || parseFloat(amount) <= 0) { setErrorMsg("المبلغ مطلوب"); return; }
@@ -170,9 +347,8 @@ export default function TransactionsView() {
     if (!op) return;
 
     if (opType === "general" && !expenseAccount) { setErrorMsg("اختر حساب المصروف"); return; }
-    if (opType === "customer" && !selectedCustomer) { setErrorMsg("اختر العميل"); return; }
 
-    const accountCode = opType === "withdrawal" ? wdAccount : opType === "general" ? expenseAccount.accountCode : "1202";
+    const accountCode = opType === "withdrawal" ? wdAccount : expenseAccount.accountCode;
     const entryType = op.entryType;
 
     setSubmitting(true);
@@ -188,13 +364,13 @@ export default function TransactionsView() {
           amount: parseFloat(amount),
           cashAccountCode: cashAccount,
           branch: "DHM",
-          notes: [selectedCustomer ? `عميل: ${selectedCustomer.customerName}` : "", notes].filter(Boolean).join(" | "),
+          notes,
         }),
       });
       const d = await r.json();
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
-        setAmount(""); setNotes(""); setExpenseAccount(null); setSelectedCustomer(null);
+        setAmount(""); setNotes(""); setExpenseAccount(null);
       } else setErrorMsg(d.error);
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
@@ -240,7 +416,7 @@ export default function TransactionsView() {
       )}
 
       {/* Form */}
-      {opType && category !== "transfer" && (
+      {opType && opType !== "debtors" && category !== "transfer" && (
         <form onSubmit={handleSubmit} className="tx-form">
           {opType === "withdrawal" && (
             <div className="form-group full-width">
@@ -294,52 +470,95 @@ export default function TransactionsView() {
               </div>
             </div>
           )}
-          {opType === "customer" && (
-            <div className="tx-auto-banner">
-              <span>🏦 دائن تلقائي: </span>
-              <strong>1202 — ذمم مدينة - عملاء</strong>
-            </div>
-          )}
-
-          <div className="tx-form-grid">
-            {(opType === "general") && (
-              <div className="form-group">
-                <label>🔴 حساب المصروف <span className="required">*</span></label>
-                <div style={{ position: "relative" }}>
-                  <input type="text" className="form-control"
-                    placeholder={expenseAccount ? `✅ ${expenseAccount.accountName}` : "ابحث عن حساب مصروف..."}
-                    value={expenseAccount ? "" : expenseSearch}
-                    onChange={e => { setExpenseSearch(e.target.value); setShowExpenseDropdown(true); if (expenseAccount) setExpenseAccount(null); }}
-                    onFocus={() => setShowExpenseDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)} />
-                  {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length > 0 && (
-                    <div className="acct-search-dropdown">
-                      {filteredExpense.slice(0, 15).map(a => (
-                        <div key={a.accountCode} className="acct-search-item expense"
-                          onMouseDown={() => { setExpenseAccount(a); setShowExpenseDropdown(false); setExpenseSearch(""); }}>
-                          <span className="asi-name">{a.accountName}</span>
-                          <span className="asi-code">{a.accountCode}</span>
+          {(opType === "general" || opType === "withdrawal") && (
+            <>
+              <div className="tx-form-grid">
+                {(opType === "general") && (
+                  <div className="form-group">
+                    <label>🔴 حساب المصروف <span className="required">*</span></label>
+                    <div style={{ position: "relative" }}>
+                      <input type="text" className="form-control"
+                        placeholder={expenseAccount ? `✅ ${expenseAccount.accountName}` : "ابحث عن حساب مصروف..."}
+                        value={expenseAccount ? "" : expenseSearch}
+                        onChange={e => { setExpenseSearch(e.target.value); setShowExpenseDropdown(true); if (expenseAccount) setExpenseAccount(null); }}
+                        onFocus={() => setShowExpenseDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)} />
+                      {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length > 0 && (
+                        <div className="acct-search-dropdown">
+                          {filteredExpense.slice(0, 15).map(a => (
+                            <div key={a.accountCode} className="acct-search-item expense"
+                              onMouseDown={() => { setExpenseAccount(a); setShowExpenseDropdown(false); setExpenseSearch(""); }}>
+                              <span className="asi-name">{a.accountName}</span>
+                              <span className="asi-code">{a.accountCode}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                      {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length === 0 && (
+                        <div className="acct-search-dropdown">
+                          <div className="acct-search-empty">لا توجد نتائج</div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length === 0 && (
-                    <div className="acct-search-dropdown">
-                      <div className="acct-search-empty">لا توجد نتائج</div>
-                    </div>
-                  )}
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>🏦 الخزينة</label>
+                  <select className="form-control" value={cashAccount} onChange={e => setCashAccount(e.target.value)}>
+                    {cashAccounts.map(a => (
+                      <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>💰 المبلغ <span className="required">*</span></label>
+                  <input type="number" step="0.01" min="0.01" className="form-control" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" required />
+                </div>
+                <div className="form-group">
+                  <label>📅 التاريخ</label>
+                  <DualCalendarPicker value={entryDate} onChange={val => setEntryDate(val)} />
+                </div>
+                <div className="form-group full-width">
+                  <label>📝 البيان</label>
+                  <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder={opType === "withdrawal" ? "سحب شخصي" : "سبب العملية..."} />
                 </div>
               </div>
-            )}
+              {/* Journal preview */}
+              {preview && (
+                <div className="tx-preview">
+                  <div className="tx-preview-title">🧾 معاينة القيد</div>
+                  <div className="tx-preview-rows">
+                    <div className="tx-preview-row debit">
+                      <span className="tx-pr-side">مدين</span>
+                      <span className="tx-pr-acct">{preview.debit.code} — {preview.debit.name}</span>
+                      <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
+                    </div>
+                    <div className="tx-preview-row credit">
+                      <span className="tx-pr-side">دائن</span>
+                      <span className="tx-pr-acct">{preview.credit.code} — {preview.credit.name}</span>
+                      <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="form-actions" style={{ marginTop: "1rem" }}>
+                <button type="submit" className="btn btn-primary btn-lg" disabled={submitting || !amount || parseFloat(amount) <= 0}>
+                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : "🔴 تسجيل مصروف عام"}
+                </button>
+              </div>
+            </>
+          )}
 
-            {opType === "customer" && (
+          {opType === "customer" && (
+            <div className="tx-customer-pay">
+              {/* Customer search */}
               <div className="form-group">
                 <label>👥 العميل <span className="required">*</span></label>
                 <div style={{ position: "relative" }}>
                   <input type="text" className="form-control"
                     placeholder={selectedCustomer ? `✅ ${selectedCustomer.customerName}${selectedCustomer.customerPhone ? ` (${selectedCustomer.customerPhone})` : ""}` : "ابحث باسم العميل..."}
                     value={selectedCustomer ? "" : customerSearch}
-                    onChange={e => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); if (selectedCustomer) setSelectedCustomer(null); }}
+                    onChange={e => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); if (selectedCustomer) { setSelectedCustomer(null); setCustPayBooking(null); } }}
                     onFocus={() => setShowCustomerDropdown(true)}
                     onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 250)} />
                   {showCustomerDropdown && customerSearch.trim() && filteredCustomers.length > 0 && (
@@ -360,54 +579,94 @@ export default function TransactionsView() {
                   )}
                 </div>
               </div>
-            )}
 
-            <div className="form-group">
-              <label>🏦 الخزينة</label>
-              <select className="form-control" value={cashAccount} onChange={e => setCashAccount(e.target.value)}>
-                {cashAccounts.map(a => (
-                  <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>💰 المبلغ <span className="required">*</span></label>
-              <input type="number" step="0.01" min="0.01" className="form-control" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" required />
-            </div>
-            <div className="form-group">
-              <label>📅 التاريخ</label>
-              <DualCalendarPicker value={entryDate} onChange={val => setEntryDate(val)} />
-            </div>
-            <div className="form-group full-width">
-              <label>📝 البيان</label>
-              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder={opType === "withdrawal" ? "سحب شخصي" : "سبب العملية..."} />
-            </div>
-          </div>
-
-          {/* Journal preview */}
-          {preview && (
-            <div className="tx-preview">
-              <div className="tx-preview-title">🧾 معاينة القيد</div>
-              <div className="tx-preview-rows">
-                <div className="tx-preview-row debit">
-                  <span className="tx-pr-side">مدين</span>
-                  <span className="tx-pr-acct">{preview.debit.code} — {preview.debit.name}</span>
-                  <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
+              {/* Customer booking details */}
+              {selectedCustomer && customerActiveBookings.length > 0 && (
+                <div className="tx-cust-books">
+                  <h4 style={{ margin: "1rem 0 0.5rem", fontSize: "0.9rem", color: "var(--foreground)" }}>
+                    📋 حجوزات {selectedCustomer.customerName}
+                  </h4>
+                  <div className="tx-cust-books-grid">
+                    {customerActiveBookings.map(b => (
+                      <div key={b.bookingId}
+                        className={`tx-cust-book-card ${custPayBooking?.bookingId === b.bookingId ? "active" : ""}`}
+                        onClick={() => {
+                          if ((b.remainingAmount || 0) > 0) {
+                            setCustPayBooking(custPayBooking?.bookingId === b.bookingId ? null : b);
+                            setCustPayAmount("");
+                          }
+                        }}>
+                        <div className="tx-cb-header">
+                          <span className="tx-cb-id">{b.bookingId}</span>
+                          <span className={`tx-cb-status status-${b.status === "مؤكد" ? "confirmed" : b.status === "قيد الانتظار" ? "pending" : b.status === "مدفوع" ? "paid" : ""}`}>
+                            {b.status}
+                          </span>
+                        </div>
+                        <div className="tx-cb-body">
+                          <span className="tx-cb-type">{b.bookingType || "—"}</span>
+                          <div className="tx-cb-amounts">
+                            <span>المتفق عليه: <strong>{formatCurrency(b.totalAmount || 0)}</strong></span>
+                            <span className="cb-paid">المُسدّد: <strong>{formatCurrency(b.paidAmount || 0)}</strong></span>
+                            <span className="cb-remain">المتبقي: <strong>{formatCurrency(b.remainingAmount || 0)}</strong></span>
+                          </div>
+                        </div>
+                        {/* Payment input when selected */}
+                        {custPayBooking?.bookingId === b.bookingId && (b.remainingAmount || 0) > 0 && (
+                          <div className="tx-cb-pay" onClick={e => e.stopPropagation()}>
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                              <div style={{ flex: 1, minWidth: 120 }}>
+                                <label style={{ fontSize: "0.75rem", opacity: 0.6 }}>المبلغ</label>
+                                <input type="number" step="0.01" min="0.01" max={b.remainingAmount}
+                                  className="form-control" style={{ fontSize: "0.85rem" }}
+                                  value={custPayAmount}
+                                  onChange={e => setCustPayAmount(e.target.value)}
+                                  placeholder={`أقل من ${formatCurrency(b.remainingAmount)}`} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 120 }}>
+                                <label style={{ fontSize: "0.75rem", opacity: 0.6 }}>التاريخ</label>
+                                <DualCalendarPicker value={entryDate} onChange={val => setEntryDate(val)} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 120 }}>
+                                <label style={{ fontSize: "0.75rem", opacity: 0.6 }}>الخزينة</label>
+                                <select className="form-control" style={{ fontSize: "0.85rem" }} value={cashAccount} onChange={e => setCashAccount(e.target.value)}>
+                                  {cashAccounts.map(a => (
+                                    <option key={a.accountCode} value={a.accountCode}>{a.accountName}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div style={{ marginTop: "0.5rem" }}>
+                              <label style={{ fontSize: "0.75rem", opacity: 0.6 }}>البيان</label>
+                              <textarea className="form-control" rows="1" value={notes} onChange={e => setNotes(e.target.value)}
+                                placeholder="سبب الدفع..." style={{ fontSize: "0.85rem" }} />
+                            </div>
+                            <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: "0.5rem" }}
+                              disabled={custPaySaving || !custPayAmount || parseFloat(custPayAmount) <= 0 || parseFloat(custPayAmount) > (b.remainingAmount || 0)}
+                              onClick={async () => {
+                                await handleCustomerPayment(b);
+                              }}>
+                              {custPaySaving ? "..." : "💰 تأكيد الدفع"}
+                            </button>
+                            {custPayAmount && parseFloat(custPayAmount) > 0 && parseFloat(custPayAmount) > (b.remainingAmount || 0) && (
+                              <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "0.25rem" }}>⚠️ المبلغ أكبر من المتبقي</p>
+                            )}
+                          </div>
+                        )}
+                        {(b.remainingAmount || 0) <= 0 && (
+                          <div className="tx-cb-paid-badge">✅ مدفوع بالكامل</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="tx-preview-row credit">
-                  <span className="tx-pr-side">دائن</span>
-                  <span className="tx-pr-acct">{preview.credit.code} — {preview.credit.name}</span>
-                  <span className="tx-pr-amt">{formatCurrency(preview.amount)}</span>
+              )}
+              {selectedCustomer && customerActiveBookings.length === 0 && (
+                <div className="tx-empty" style={{ padding: "1rem" }}>
+                  <p>لا توجد حجوزات نشطة لهذا العميل</p>
                 </div>
-              </div>
+              )}
             </div>
           )}
-
-          <div className="form-actions" style={{ marginTop: "1rem" }}>
-            <button type="submit" className="btn btn-primary btn-lg" disabled={submitting || !amount || parseFloat(amount) <= 0}>
-              {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : opType === "customer" ? "👥 تسجيل تحصيل" : "🔴 تسجيل مصروف"}
-            </button>
-          </div>
         </form>
       )}
 
@@ -469,6 +728,204 @@ export default function TransactionsView() {
             </button>
           </div>
         </form>
+      )}
+
+      {/* Debtor dashboard */}
+      {opType === "debtors" && (
+        <div className="tx-debtors-dash">
+          {/* Summary cards */}
+          <div className="tx-debtors-summary">
+            <div className="tx-debtor-stat">
+              <span className="tx-ds-label">إجمالي المديونيات</span>
+              <span className="tx-ds-val">{formatCurrency(debtorData.reduce((s, d) => s + d.totalRemaining, 0))}</span>
+            </div>
+            <div className="tx-debtor-stat">
+              <span className="tx-ds-label">عدد العملاء</span>
+              <span className="tx-ds-val">{debtorData.length}</span>
+            </div>
+            <div className="tx-debtor-stat">
+              <span className="tx-ds-label">إجمالي المستحق</span>
+              <span className="tx-ds-val">{formatCurrency(debtorData.reduce((s, d) => s + d.totalAmount, 0))}</span>
+            </div>
+          </div>
+
+          {/* Search + actions */}
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+            <input type="text" className="form-control" style={{ maxWidth: 350, flex: 1, minWidth: 200 }}
+              placeholder="🔍 ابحث باسم العميل أو رقم الجوال..."
+              value={debtorSearch} onChange={e => setDebtorSearch(e.target.value)} />
+            <div style={{ position: "relative" }}>
+              <button type="button" className="btn btn-gold" onClick={() => setShowMsgMenu(!showMsgMenu)} disabled={msgSending}>
+                {msgSending ? "جاري الإرسال..." : "📨 مراسلة"}
+              </button>
+              {showMsgMenu && (
+                <div className="tx-msg-dropdown" onMouseLeave={() => setShowMsgMenu(false)}>
+                  <button type="button" className="tx-msg-opt"
+                    onClick={() => { setShowMsgMenu(false); sendBulkMsg("whatsapp"); }}>
+                    📱 واتساب للجميع
+                  </button>
+                  <button type="button" className="tx-msg-opt"
+                    onClick={() => { setShowMsgMenu(false); sendBulkMsg("sms"); }}>
+                    💬 SMS للجميع
+                  </button>
+                  <button type="button" className="tx-msg-opt"
+                    onClick={() => { setShowMsgMenu(false); sendFallbackMsg(); }}>
+                    🔁 واتساب + SMS (محاولة)
+                  </button>
+                </div>
+              )}
+            </div>
+            <button type="button" className="btn btn-gold" onClick={() => {
+              if (filteredDebtors.length === 0) { setErrorMsg("لا توجد بيانات للطباعة"); return; }
+              print("REPORT_TABLE", {
+                title: "📋 تقرير المديونيات",
+                dateHeader: new Date().toLocaleDateString("en-CA"),
+                headers: ["#", "العميل", "الجوال", "الإجمالي", "المدفوع", "المتبقي"],
+                rows: filteredDebtors.map((d, i) => ({
+                  cells: [String(i + 1), d.customerName || "—", d.customerPhone || "—", formatCurrency(d.totalAmount), formatCurrency(d.totalPaid), formatCurrency(d.totalRemaining)],
+                  type: "liability",
+                })),
+                totalLabels: { liability: "إجمالي المديونيات" },
+                totals: {
+                  liability: formatCurrency(filteredDebtors.reduce((s, d) => s + d.totalRemaining, 0)),
+                },
+              });
+            }}>🖨️ طباعة</button>
+          </div>
+
+          {/* Table */}
+          {filteredDebtors.length === 0 ? (
+            <div className="tx-empty"><p>✨ لا توجد مديونيات</p></div>
+          ) : (
+            <div className="tx-debtors-table-wrap">
+              <table className="tx-debtors-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>العميل</th>
+                    <th>الجوال</th>
+                    <th>الإجمالي</th>
+                    <th>المدفوع</th>
+                    <th>المتبقي</th>
+                    <th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDebtors.map((d, idx) => (
+                    <tr key={idx}
+                      className={selectedDebtor === d ? "tx-dr-active" : ""}
+                      onClick={() => setSelectedDebtor(selectedDebtor === d ? null : d)}>
+                      <td>{idx + 1}</td>
+                      <td><strong>{d.customerName || "—"}</strong></td>
+                      <td dir="ltr">
+                        {d.customerPhone ? (
+                          <a href={`tel:${d.customerPhone}`} style={{ color: "inherit", textDecoration: "none", direction: "ltr", display: "inline-block" }}>{d.customerPhone}</a>
+                        ) : "—"}
+                      </td>
+                      <td>{formatCurrency(d.totalAmount)}</td>
+                      <td className="tx-ds-paid">{formatCurrency(d.totalPaid)}</td>
+                      <td className="tx-ds-remain">{formatCurrency(d.totalRemaining)}</td>
+                      <td className="tx-dr-actions" onClick={e => e.stopPropagation()}>
+                        {d.customerPhone && (
+                          <>
+                            <a href={`https://wa.me/${d.customerPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(composeMsg(d.customerName, d.totalRemaining))}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="tx-debtor-wa" title="واتساب">📱</a>
+                            <a href={`sms:${d.customerPhone}?body=${encodeURIComponent(composeMsg(d.customerName, d.totalRemaining))}`}
+                              className="tx-debtor-wa" title="SMS">💬</a>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* Expanded bookings per selected debtor */}
+              {selectedDebtor && (
+                <div className="tx-debtor-detail">
+                  <div className="tx-dd-header">
+                    <strong>{selectedDebtor.customerName}</strong>
+                    <span>المتبقي: {formatCurrency(selectedDebtor.totalRemaining)}</span>
+                    {selectedDebtor.customerPhone && (
+                      <>
+                        <a href={`https://wa.me/${selectedDebtor.customerPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(composeMsg(selectedDebtor.customerName, selectedDebtor.totalRemaining))}`}
+                          target="_blank" rel="noopener noreferrer" className="tx-debtor-wa">📱 واتساب</a>
+                        <a href={`sms:${selectedDebtor.customerPhone}?body=${encodeURIComponent(composeMsg(selectedDebtor.customerName, selectedDebtor.totalRemaining))}`}
+                          className="tx-debtor-wa">💬 SMS</a>
+                      </>
+                    )}
+                  </div>
+                  <table className="tx-debtor-bks">
+                    <thead>
+                      <tr>
+                        <th>الحجز</th>
+                        <th>التاريخ</th>
+                        <th>المبلغ</th>
+                        <th>المتبقي</th>
+                        <th>تسديد</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedDebtor.bookings.map(b => (
+                        <tr key={b.bookingId}>
+                          <td>{b.bookingId}</td>
+                          <td>{b.startDate || "—"}</td>
+                          <td>{formatCurrency(b.totalAmount || 0)}</td>
+                          <td className="tx-ds-remain">{formatCurrency(b.remainingAmount || 0)}</td>
+                          <td>
+                            <button type="button" className="btn btn-sm btn-primary"
+                              onClick={() => {
+                                setDebtorPayBooking(b);
+                                setDebtorPayAmount("");
+                                setDebtorPayDate(getTodayString?.() || new Date().toLocaleDateString("en-CA"));
+                              }}>💰</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Payment modal for debtor */}
+      {debtorPayBooking && (
+        <div className="tx-modal-overlay" onClick={() => setDebtorPayBooking(null)}>
+          <div className="tx-modal-box" onClick={e => e.stopPropagation()}>
+            <div className="tx-modal-header">
+              <strong>💰 تسديد {selectedDebtor?.customerName || debtorPayBooking.customerName}</strong>
+              <button type="button" className="tx-modal-close" onClick={() => setDebtorPayBooking(null)}>✕</button>
+            </div>
+            <div className="tx-modal-body">
+              <p style={{ fontSize: "0.85rem", opacity: 0.7, marginBottom: "0.75rem" }}>
+                الحجز: {debtorPayBooking.bookingId} — المتبقي: {formatCurrency(debtorPayBooking.remainingAmount || 0)}
+              </p>
+              <div className="form-group">
+                <label>📅 التاريخ</label>
+                <DualCalendarPicker value={debtorPayDate} onChange={val => setDebtorPayDate(val)} />
+              </div>
+              <div className="form-group" style={{ marginTop: "0.75rem" }}>
+                <label>💰 المبلغ</label>
+                <input type="number" step="0.01" min="0.01" className="form-control" value={debtorPayAmount}
+                  onChange={e => setDebtorPayAmount(e.target.value)} placeholder="أدخل المبلغ" />
+              </div>
+            </div>
+            <div className="tx-modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setDebtorPayBooking(null)}>إلغاء</button>
+              <button type="button" className="btn btn-primary"
+                disabled={debtorPaySaving || !debtorPayAmount || parseFloat(debtorPayAmount) <= 0}
+                onClick={async () => {
+                  await handleDebtorPayment(debtorPayBooking);
+                  setDebtorPayBooking(null);
+                }}>
+                {debtorPaySaving ? "..." : "تأكيد الدفع"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Empty state */}
@@ -670,6 +1127,215 @@ export default function TransactionsView() {
           text-align: center;
           padding: 2rem;
           opacity: 0.5;
+        }
+        .tx-debtors-dash { max-width: 100%; }
+        .tx-debtors-summary {
+          display: flex;
+          gap: 0.75rem;
+          margin-bottom: 1rem;
+          flex-wrap: wrap;
+        }
+        .tx-debtor-stat {
+          flex: 1;
+          min-width: 140px;
+          padding: 0.75rem 1rem;
+          border: 1px solid var(--card-border);
+          border-radius: var(--radius);
+          background: var(--hover-bg);
+          text-align: center;
+        }
+        .tx-ds-label { display: block; font-size: 0.75rem; opacity: 0.6; margin-bottom: 0.25rem; }
+        .tx-ds-val { display: block; font-size: 1.25rem; font-weight: 700; }
+        .tx-debtors-table-wrap { overflow-x: auto; }
+        .tx-debtors-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.85rem;
+        }
+        .tx-debtors-table th {
+          padding: 0.5rem 0.6rem;
+          text-align: center;
+          border-bottom: 2px solid var(--card-border);
+          font-weight: 600;
+          white-space: nowrap;
+          color: var(--foreground);
+        }
+        .tx-debtors-table td {
+          padding: 0.5rem 0.6rem;
+          text-align: center;
+          border-bottom: 1px solid var(--card-border);
+          color: var(--foreground);
+        }
+        .tx-debtors-table tr:hover td { background: var(--hover-bg); }
+        .tx-debtors-table tr.tx-dr-active td { background: rgba(212,168,67,0.08); }
+        .tx-ds-paid { color: #22c55e; }
+        .tx-ds-remain { color: #ef4444; font-weight: 700; }
+        .tx-dr-actions { white-space: nowrap; }
+        .tx-debtor-wa {
+          text-decoration: none;
+          font-size: 1.1rem;
+          cursor: pointer;
+          padding: 0.25rem 0.4rem;
+          border-radius: 4px;
+          display: inline-block;
+        }
+        .tx-debtor-wa:hover { background: rgba(255,255,255,0.1); }
+        .tx-msg-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 4px;
+          background: var(--card-bg);
+          border: 1px solid var(--card-border);
+          border-radius: var(--radius);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+          z-index: 100;
+          min-width: 200px;
+          overflow: hidden;
+        }
+        .tx-msg-opt {
+          display: block;
+          width: 100%;
+          padding: 0.6rem 1rem;
+          border: none;
+          background: none;
+          color: var(--foreground);
+          text-align: right;
+          font-size: 0.85rem;
+          cursor: pointer;
+          border-bottom: 1px solid var(--card-border);
+        }
+        .tx-msg-opt:last-child { border-bottom: none; }
+        .tx-msg-opt:hover { background: var(--hover-bg); }
+        .tx-debtor-detail {
+          margin-top: 0.75rem;
+          border: 1px solid var(--card-border);
+          border-radius: var(--radius);
+          overflow: hidden;
+        }
+        .tx-dd-header {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 0.6rem 0.75rem;
+          background: var(--hover-bg);
+          border-bottom: 1px solid var(--card-border);
+          font-size: 0.9rem;
+          flex-wrap: wrap;
+        }
+        .tx-debtor-bks { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .tx-debtor-bks th {
+          padding: 0.4rem 0.6rem;
+          border-bottom: 1px solid var(--card-border);
+          font-weight: 600;
+          text-align: center;
+          color: var(--foreground);
+        }
+        .tx-debtor-bks td {
+          padding: 0.4rem 0.6rem;
+          text-align: center;
+          border-bottom: 1px solid var(--card-border);
+          color: var(--foreground);
+        }
+        .tx-debtor-bks tr:last-child td { border-bottom: none; }
+        .tx-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+        }
+        .tx-modal-box {
+          background: var(--card-bg);
+          border: 1px solid var(--card-border);
+          border-radius: var(--radius);
+          width: 90%;
+          max-width: 420px;
+          color: var(--foreground);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .tx-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.75rem 1rem;
+          border-bottom: 1px solid var(--card-border);
+        }
+        .tx-modal-close {
+          background: none;
+          border: none;
+          color: var(--foreground);
+          font-size: 1.2rem;
+          cursor: pointer;
+          opacity: 0.6;
+        }
+        .tx-modal-close:hover { opacity: 1; }
+        .tx-modal-body { padding: 1rem; }
+        .tx-modal-footer {
+          display: flex;
+          gap: 0.5rem;
+          justify-content: flex-end;
+          padding: 0.75rem 1rem;
+          border-top: 1px solid var(--card-border);
+        }
+        .tx-customer-pay { max-width: 700px; margin: 0 auto; }
+        .tx-cust-books-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+        .tx-cust-book-card {
+          border: 1px solid var(--card-border);
+          border-radius: var(--radius);
+          background: var(--hover-bg);
+          overflow: hidden;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .tx-cust-book-card:hover { border-color: var(--gold); }
+        .tx-cust-book-card.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+        .tx-cb-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.5rem 0.75rem;
+          border-bottom: 1px solid var(--card-border);
+          background: rgba(0,0,0,0.15);
+        }
+        .tx-cb-id { font-weight: 700; font-size: 0.85rem; color: var(--foreground); }
+        .tx-cb-status {
+          font-size: 0.7rem;
+          padding: 0.2rem 0.5rem;
+          border-radius: 4px;
+          font-weight: 600;
+        }
+        .status-confirmed { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .status-pending { background: rgba(255,193,7,0.2); color: #ffc107; }
+        .status-paid { background: rgba(13,202,240,0.2); color: #0dcaf0; }
+        .tx-cb-body { padding: 0.5rem 0.75rem; }
+        .tx-cb-type { font-size: 0.8rem; opacity: 0.6; display: block; margin-bottom: 0.25rem; color: var(--foreground); }
+        .tx-cb-amounts {
+          display: flex;
+          gap: 0.75rem;
+          font-size: 0.8rem;
+          flex-wrap: wrap;
+          color: var(--foreground);
+        }
+        .tx-cb-amounts .cb-paid { color: #22c55e; }
+        .tx-cb-amounts .cb-remain { color: #ef4444; }
+        .tx-cb-pay {
+          padding: 0.5rem 0.75rem;
+          border-top: 1px solid var(--card-border);
+          background: rgba(255,255,255,0.03);
+        }
+        .tx-cb-paid-badge {
+          padding: 0.4rem 0.75rem;
+          text-align: center;
+          font-size: 0.8rem;
+          color: #22c55e;
+          border-top: 1px solid var(--card-border);
         }
       `}</style>
     </section>
