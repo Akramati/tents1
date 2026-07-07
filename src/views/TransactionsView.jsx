@@ -90,6 +90,8 @@ export default function TransactionsView() {
   const [editConfigAcct, setEditConfigAcct] = useState("5005-01");
   const [editConfigType, setEditConfigType] = useState("ربع سنوي");
   const [editConfigAmount, setEditConfigAmount] = useState("");
+  const [editConfigLessorName, setEditConfigLessorName] = useState("");
+  const [editConfigLessorPhone, setEditConfigLessorPhone] = useState("");
   const periodTypes = [
     { id: "سنوي", label: "سنوي", values: ["السنة كاملة"] },
     { id: "ثلث سنوي", label: "ثلث سنوي", values: ["الثلث الأول (1-4)", "الثلث الثاني (5-8)", "الثلث الثالث (9-12)"] },
@@ -491,6 +493,11 @@ export default function TransactionsView() {
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
+        if (opType === "rent" && currentRentConfig?.lessorPhone) {
+          const cleanPhone = currentRentConfig.lessorPhone.replace(/^0+/, "966");
+          const msg = encodeURIComponent(`السلام عليكم، تم تسديد دفعة إيجار ${rentPeriodVal} لمبلغ ${parseFloat(amount).toLocaleString()} ريال.`);
+          setTimeout(() => window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank"), 500);
+        }
         if (opType === "rent") {
           // Refresh entries then auto-advance to next unpaid period
           setTimeout(async () => {
@@ -752,6 +759,8 @@ export default function TransactionsView() {
                   setEditConfigAcct(rentAccountCode);
                   setEditConfigType(currentRentConfig?.periodType || "ربع سنوي");
                   setEditConfigAmount(currentRentConfig?.amountPerPeriod || "");
+                  setEditConfigLessorName(currentRentConfig?.lessorName || "");
+                  setEditConfigLessorPhone(currentRentConfig?.lessorPhone || "");
                   setShowRentConfig(true);
                 }}>⚙️ {currentRentConfig ? "تعديل الإعدادات" : "إعدادات"}</button>
                 {currentRentConfig && (
@@ -759,6 +768,8 @@ export default function TransactionsView() {
                     <span className="tx-rent-config-label">
                       {currentRentConfig.periodType === "سنوي" ? "سنوي" : currentRentConfig.periodType === "ثلث سنوي" ? "ثلث سنوي" : currentRentConfig.periodType === "ربع سنوي" ? "ربع سنوي" : "شهري"}
                       {' | '}{formatCurrency(currentRentConfig.amountPerPeriod)} ريال/الفترة
+                      {currentRentConfig.lessorName && <span style={{ marginRight: "0.75rem" }}>| 👤 {currentRentConfig.lessorName}</span>}
+                      {currentRentConfig.lessorPhone && <span style={{ marginRight: "0.75rem" }}>| 📞 {currentRentConfig.lessorPhone}</span>}
                     </span>
                   </div>
                 )}
@@ -792,12 +803,22 @@ export default function TransactionsView() {
                         <input type="number" step="0.01" min="0.01" className="form-control" value={editConfigAmount}
                           onChange={e => setEditConfigAmount(e.target.value)} placeholder="مثلاً: 10000" />
                       </div>
+                      <div className="form-group" style={{ marginTop: "0.75rem" }}>
+                        <label>👤 اسم المؤجر</label>
+                        <input type="text" className="form-control" value={editConfigLessorName}
+                          onChange={e => setEditConfigLessorName(e.target.value)} placeholder="اسم صاحب العقار" />
+                      </div>
+                      <div className="form-group" style={{ marginTop: "0.75rem" }}>
+                        <label>📞 رقم جوال المؤجر (واتساب)</label>
+                        <input type="text" className="form-control" value={editConfigLessorPhone}
+                          onChange={e => setEditConfigLessorPhone(e.target.value)} placeholder="05xxxxxxxx" />
+                      </div>
                     </div>
                     <div className="tx-modal-footer">
                       <button type="button" className="btn btn-secondary" onClick={() => setShowRentConfig(false)}>إلغاء</button>
                       <button type="button" className="btn btn-primary" onClick={() => {
                         const cfg = { ...rentConfigs };
-                        cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0 };
+                        cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0, lessorName: editConfigLessorName, lessorPhone: editConfigLessorPhone };
                         saveRentConfigs(cfg);
                         if (editConfigAcct === rentAccountCode) {
                           fetchRentEntries();
@@ -1036,6 +1057,12 @@ export default function TransactionsView() {
                             totals: { expense: formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0)) },
                           });
                         }}>🖨️ طباعة الكشف السنوي</button>
+                        {currentRentConfig?.lessorPhone && (
+                          <a href={`https://wa.me/${currentRentConfig.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(`السلام عليكم، كشف إيجار ${acctName(rentAccountCode)} لفترات ${rentYear}`)}`}
+                            target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: "none" }}>
+                            📱 إرسال كشف للمؤجر
+                          </a>
+                        )}
                       </div>
                     </>
                   )}
