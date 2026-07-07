@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
 
@@ -15,7 +15,6 @@ const OP_TYPES = {
     { id: "rent", label: "إيجار", icon: "🏢", desc: "إيجار منشأة أو أرض", debitAuto: "5005", entryType: "expense" },
     { id: "salaries", label: "رواتب", icon: "👥", desc: "صرف رواتب الموظفين", debitAuto: "5004", entryType: "expense" },
     { id: "general", label: "مصروف عام", icon: "📋", desc: "اختر حساب المصروف", entryType: "expense" },
-    { id: "voucher", label: "سند صرف", icon: "🧾", desc: "سند صرف نقدي مع تحديد المستلم", entryType: "expense" },
   ],
   income: [
     { id: "customer", label: "تحصيل من عميل", icon: "👤", desc: "تسديد ذمم عميل", creditAuto: "1202", entryType: "income" },
@@ -23,7 +22,7 @@ const OP_TYPES = {
   ],
 };
 
-const isFixedExpense = (t) => t === "withdrawal" || t === "salaries" || t === "voucher";
+const isFixedExpense = (t) => t === "withdrawal" || t === "salaries";
 export default function TransactionsView() {
   const { formatCurrency, setSuccessMsg, setErrorMsg, getTodayString, print, userRole } = useApp();
   const [category, setCategory] = useState("expense");
@@ -39,11 +38,6 @@ export default function TransactionsView() {
   const [fromAccount, setFromAccount] = useState("1101");
   const [toAccount, setToAccount] = useState("1102");
   const [notes, setNotes] = useState("");
-  const [recipient, setRecipient] = useState("");
-
-  // Voucher debit account
-  const [voucherAccount, setVoucherAccount] = useState(null);
-  const [voucherSearch, setVoucherSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerResults, setCustomerResults] = useState([]);
@@ -79,22 +73,6 @@ export default function TransactionsView() {
   const [recentEntries, setRecentEntries] = useState([]);
 
   // Rent management
-  const [financeTab, setFinanceTab] = useState("ops");
-  const [ledgerEntries, setLedgerEntries] = useState([]);
-  const [ledgerDateFrom, setLedgerDateFrom] = useState("");
-  const [ledgerDateTo, setLedgerDateTo] = useState("");
-  const [ledgerCashFilter, setLedgerCashFilter] = useState("");
-  const [cumulativeBalances, setCumulativeBalances] = useState({});
-  const [adjustBalances, setAdjustBalances] = useState({});
-  const [adjustDate, setAdjustDate] = useState(getTodayString?.() || new Date().toLocaleDateString("en-CA"));
-  const [adjustNotes, setAdjustNotes] = useState("");
-  const [adjustSubmitting, setAdjustSubmitting] = useState(false);
-  const [showAccountForm, setShowAccountForm] = useState(false);
-  const [editingAcctCode, setEditingAcctCode] = useState(null);
-  const [acctForm, setAcctForm] = useState({ accountCode: "", accountName: "", accountType: "expense", parentCode: "" });
-  const [showHiddenAccounts, setShowHiddenAccounts] = useState(false);
-  const [editEntry, setEditEntry] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const rentAccounts = useMemo(() => accounts.filter(a => a.parentCode === "5005" && a.isActive !== false), [accounts]);
   const [rentAccountCode, setRentAccountCode] = useState("5005-01");
   const [rentYear, setRentYear] = useState(String(new Date().getFullYear()));
@@ -121,19 +99,6 @@ export default function TransactionsView() {
   const currentRentConfig = rentConfigs[rentAccountCode];
   const effectiveRentPeriodType = currentRentConfig?.periodType || "ربع سنوي";
   const rentPeriodLabel = currentRentConfig ? `${rentYear} - ${currentRentConfig.periodType} - ${rentPeriodVal}` : "";
-
-  // Finance hub derived state
-  const accountTree = useMemo(() => {
-    const seen = new Set();
-    const deduped = accounts.filter(a => { if (seen.has(a.accountCode)) return false; seen.add(a.accountCode); return true; });
-    const build = (parents, depth = 0) => { const r = []; for (const p of parents) { r.push({ ...p, depth }); const ch = deduped.filter(a => a.parentCode === p.accountCode); if (ch.length > 0) r.push(...build(ch, depth + 1)); } return r; };
-    const types = [{ label: "🏦 الأصول", type: "asset" },{ label: "💳 المطلوبات", type: "liability" },{ label: "👑 حقوق الملكية", type: "equity" },{ label: "🟢 الإيرادات", type: "income" },{ label: "🔴 المصروفات", type: "expense" }];
-    return types.map(t => ({ ...t, items: build(deduped.filter(a => a.accountType === t.type && !a.parentCode)) }));
-  }, [accounts]);
-  const cashAccts = useMemo(() => accounts.filter(a => a.accountType === "asset" && a.parentCode === "1100" && a.isActive !== false).sort((a, b) => a.accountCode.localeCompare(b.accountCode)), [accounts]);
-  const fetchLedger = useCallback(async (from, to) => {
-    try { const p = new URLSearchParams(); if (from) p.set("from", from); if (to) p.set("to", to); const r = await fetch("/api/finance/ledger?" + p.toString()); const d = await r.json(); if (d.success) { setLedgerEntries(d.entries || []); setCumulativeBalances(d.cumulativeBalances || {}); } } catch {}
-  }, []);
 
   const fetchRecent = async () => {
     try {
@@ -255,10 +220,6 @@ export default function TransactionsView() {
     setDebtorPayAmount("");
     setCustPayBooking(null);
     setCustPayAmount("");
-    setVoucherAccount(null);
-    setVoucherSearch("");
-    setRecipient("");
-    if (id === "rent") fetchRentEntries();
   };
 
   const acctName = (code) => {
@@ -285,10 +246,6 @@ export default function TransactionsView() {
     if (opType === "general") {
       if (!expenseAccount) return null;
       return { debit: { code: expenseAccount.accountCode, name: expenseAccount.accountName }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
-    }
-    if (opType === "voucher") {
-      if (!voucherAccount) return null;
-      return { debit: { code: voucherAccount.accountCode, name: voucherAccount.accountName }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
     }
     if (opType === "customer") {
       return { debit: { code: cashAccount, name: acctName(cashAccount) }, credit: { code: "1202", name: "ذمم مدينة - عملاء" }, amount: amt };
@@ -445,7 +402,6 @@ export default function TransactionsView() {
     if (opType === "withdrawal") accountCode = wdAccount;
     else if (opType === "rent") accountCode = rentAccountCode;
     else if (opType === "salaries") accountCode = op.debitAuto;
-    else if (opType === "voucher") accountCode = voucherAccount?.accountCode;
     else accountCode = expenseAccount.accountCode;
     const entryType = op.entryType;
 
@@ -515,21 +471,6 @@ export default function TransactionsView() {
       let d;
       if (opType === "rent" && parseFloat(amount) > 0) {
         d = await doRentSplit(parseFloat(amount));
-      } else if (opType === "voucher") {
-        if (!voucherAccount) { setErrorMsg("اختر الحساب المدين"); setSubmitting(false); return; }
-        const vr = await fetch("/api/finance/vouchers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
-          body: JSON.stringify({
-            date: entryDate,
-            recipient,
-            accountCode: voucherAccount.accountCode,
-            cashAccountCode: cashAccount,
-            amount: parseFloat(amount),
-            notes,
-          }),
-        });
-        d = await vr.json();
       } else {
         const r = await fetch("/api/finance/ledger", {
           method: "POST",
@@ -549,7 +490,6 @@ export default function TransactionsView() {
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
-        if (opType === "voucher") { setVoucherAccount(null); setVoucherSearch(""); setRecipient(""); }
         if (opType === "rent") {
           // Refresh entries then auto-advance to next unpaid period
           setTimeout(async () => {
@@ -606,21 +546,10 @@ export default function TransactionsView() {
     } catch {}
   };
 
-  const printLedger = () => {
-    const displayData = (ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries);
-    if (displayData.length === 0) return;
-    const rows = displayData.map(e => `<tr><td>${e.date || ""}</td><td>${acctName(e.accountCode)} (${e.accountCode})</td><td>${e.entryType === "income" ? "ايراد" : e.entryType === "expense" ? "مصروف" : e.entryType}</td><td>${formatCurrency(e.amount)}</td><td>${acctName(e.cashAccountCode)}</td><td>${e.notes || ""}</td></tr>`).join("");
-    const total = displayData.reduce((s, e) => s + (e.amount || 0), 0);
-    print({
-      title: "دفتر اليومية",
-      content: `<table style="width:100%;border-collapse:collapse;font-size:12px" border="1" cellpadding="6"><thead><tr style="background:#f0f0f0"><th>التاريخ</th><th>الحساب</th><th>النوع</th><th>المبلغ</th><th>الخزينة</th><th>البيان</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:8px;font-weight:bold">الإجمالي: ${formatCurrency(total)}</p>`
-    });
-  };
-
   return (
     <section className="inventory-section glass">
       <div className="section-title-row">
-        <h2>💰 المركز المالي</h2>
+        <h2>💰 العمليات المالية</h2>
       </div>
 
       {/* Category selector */}
@@ -634,25 +563,6 @@ export default function TransactionsView() {
           </button>
         ))}
       </div>
-
-      {/* Hub tab bar */}
-      <div className="tx-category-row" style={{ marginBottom: "0.75rem" }}>
-        {[
-          { key: "ops", label: "💰 العمليات", desc: "قيود وصرف وتحصيل" },
-          { key: "ledger", label: "📋 دفتر اليومية", desc: "سجل القيود" },
-          { key: "accounts", label: "📘 دليل الحسابات", desc: "شجرة الحسابات" },
-          { key: "adjust", label: "🎯 ضبط الأرصدة", desc: "تسوية الخزائن" },
-        ].map(t => (
-          <button key={t.key} className={`tx-cat-btn ${financeTab === t.key ? "active" : ""}`}
-            onClick={() => { setFinanceTab(t.key); if (t.key === "ledger" || t.key === "adjust") fetchLedger(ledgerDateFrom, ledgerDateTo); }}>
-            <span className="tx-cat-icon">{t.key === "ops" ? "💰" : t.key === "ledger" ? "📋" : t.key === "accounts" ? "📘" : "🎯"}</span>
-            <span className="tx-cat-label">{t.label.split(" ")[1]}</span>
-            <span className="tx-cat-desc">{t.desc}</span>
-          </button>
-        ))}
-      </div>
-
-      {financeTab === "ops" && (<>
 
       {/* Operation type selector */}
       {operTypes.length > 0 && (
@@ -726,58 +636,31 @@ export default function TransactionsView() {
           {(isFixedExpense(opType) || opType === "general") && (
             <>
               <div className="tx-form-grid">
-                {(opType === "general" || opType === "voucher") && (
+                {(opType === "general") && (
                   <div className="form-group">
-                    <label>{opType === "voucher" ? "🧾 الحساب المدين" : "🔴 حساب المصروف"} <span className="required">*</span></label>
+                    <label>🔴 حساب المصروف <span className="required">*</span></label>
                     <div style={{ position: "relative" }}>
-                      {opType === "voucher" ? (
-                        <>
-                          <input type="text" className="form-control"
-                            placeholder={voucherAccount ? `✅ ${voucherAccount.accountName}` : "ابحث عن حساب (جميع الأنواع)..."}
-                            value={voucherAccount ? "" : voucherSearch}
-                            onChange={e => { setVoucherSearch(e.target.value); if (voucherAccount) setVoucherAccount(null); }}
-                            onFocus={() => {}}
-                            onBlur={() => {}} />
-                          {voucherSearch.trim() && (
-                            <div className="acct-search-dropdown">
-                              {accounts.filter(a => a.isActive !== false && (a.accountName.toLowerCase().includes(voucherSearch.toLowerCase()) || a.accountCode.includes(voucherSearch))).slice(0, 15).map(a => (
-                                <div key={a.accountCode} className={`acct-search-item ${a.accountType}`}
-                                  onMouseDown={() => { setVoucherAccount(a); setVoucherSearch(""); }}>
-                                  <span className="asi-name">{a.accountName}</span>
-                                  <span className="asi-code">{a.accountCode}</span>
-                                </div>
-                              ))}
-                              {accounts.filter(a => a.isActive !== false && (a.accountName.toLowerCase().includes(voucherSearch.toLowerCase()) || a.accountCode.includes(voucherSearch))).length === 0 && (
-                                <div className="acct-search-empty">لا توجد نتائج</div>
-                              )}
+                      <input type="text" className="form-control"
+                        placeholder={expenseAccount ? `✅ ${expenseAccount.accountName}` : "ابحث عن حساب مصروف..."}
+                        value={expenseAccount ? "" : expenseSearch}
+                        onChange={e => { setExpenseSearch(e.target.value); setShowExpenseDropdown(true); if (expenseAccount) setExpenseAccount(null); }}
+                        onFocus={() => setShowExpenseDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)} />
+                      {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length > 0 && (
+                        <div className="acct-search-dropdown">
+                          {filteredExpense.slice(0, 15).map(a => (
+                            <div key={a.accountCode} className="acct-search-item expense"
+                              onMouseDown={() => { setExpenseAccount(a); setShowExpenseDropdown(false); setExpenseSearch(""); }}>
+                              <span className="asi-name">{a.accountName}</span>
+                              <span className="asi-code">{a.accountCode}</span>
                             </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <input type="text" className="form-control"
-                            placeholder={expenseAccount ? `✅ ${expenseAccount.accountName}` : "ابحث عن حساب مصروف..."}
-                            value={expenseAccount ? "" : expenseSearch}
-                            onChange={e => { setExpenseSearch(e.target.value); setShowExpenseDropdown(true); if (expenseAccount) setExpenseAccount(null); }}
-                            onFocus={() => setShowExpenseDropdown(true)}
-                            onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)} />
-                          {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length > 0 && (
-                            <div className="acct-search-dropdown">
-                              {filteredExpense.slice(0, 15).map(a => (
-                                <div key={a.accountCode} className="acct-search-item expense"
-                                  onMouseDown={() => { setExpenseAccount(a); setShowExpenseDropdown(false); setExpenseSearch(""); }}>
-                                  <span className="asi-name">{a.accountName}</span>
-                                  <span className="asi-code">{a.accountCode}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length === 0 && (
-                            <div className="acct-search-dropdown">
-                              <div className="acct-search-empty">لا توجد نتائج</div>
-                            </div>
-                          )}
-                        </>
+                          ))}
+                        </div>
+                      )}
+                      {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length === 0 && (
+                        <div className="acct-search-dropdown">
+                          <div className="acct-search-empty">لا توجد نتائج</div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -786,12 +669,6 @@ export default function TransactionsView() {
                   <div className="tx-auto-banner" style={{ gridColumn: "1 / -1" }}>
                     <span>🏦 حساب تلقائي: </span>
                     <strong>{currentOp?.debitAuto} — {acctName(currentOp?.debitAuto)}</strong>
-                  </div>
-                )}
-                {opType === "voucher" && (
-                  <div className="form-group">
-                    <label>👤 المستلم</label>
-                    <input type="text" className="form-control" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="اسم المستلم..." />
                   </div>
                 )}
                 <div className="form-group">
@@ -812,7 +689,7 @@ export default function TransactionsView() {
                 </div>
                 <div className="form-group full-width">
                   <label>📝 البيان</label>
-                  <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder={opType === "withdrawal" ? "سحب شخصي" : opType === "voucher" ? "سبب الصرف..." : "سبب العملية..."} />
+                  <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder={opType === "withdrawal" ? "سحب شخصي" : "سبب العملية..."} />
                 </div>
               </div>
               {/* Journal preview */}
@@ -835,7 +712,7 @@ export default function TransactionsView() {
               )}
               <div className="form-actions" style={{ marginTop: "1rem" }}>
                 <button type="submit" className="btn btn-primary btn-lg" disabled={submitting || !amount || parseFloat(amount) <= 0}>
-                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : opType === "salaries" ? "👥 تسجيل رواتب" : opType === "voucher" ? "🧾 حفظ سند الصرف" : "🔴 تسجيل مصروف عام"}
+                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : opType === "salaries" ? "👥 تسجيل رواتب" : "🔴 تسجيل مصروف عام"}
                 </button>
               </div>
             </>
@@ -1525,7 +1402,7 @@ export default function TransactionsView() {
         </div>
       )}
 
-      {/* Recent transactions (ops tab only) */}
+      {/* Recent transactions */}
       {recentEntries.length > 0 && (
         <div className="tx-recent" style={{ marginTop: "2rem" }}>
           <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem", color: "var(--foreground)" }}>📋 سجل آخر العمليات</h3>
@@ -1573,344 +1450,6 @@ export default function TransactionsView() {
       {!opType && (
         <div className="tx-empty">
           <p>👈 اختر نوع العملية أعلاه للبدء</p>
-        </div>
-      )}
-
-      </>)}
-
-      {/* ===== دفتر اليومية ===== */}
-      {financeTab === "ledger" && (
-        <div className="tx-rent-statement">
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <label style={{ display: "block", fontSize: "0.72rem", marginBottom: "0.2rem", opacity: 0.6 }}>من تاريخ</label>
-              <DualCalendarPicker value={ledgerDateFrom} onChange={v => { setLedgerDateFrom(v); fetchLedger(v, ledgerDateTo); }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <label style={{ display: "block", fontSize: "0.72rem", marginBottom: "0.2rem", opacity: 0.6 }}>إلى تاريخ</label>
-              <DualCalendarPicker value={ledgerDateTo} onChange={v => { setLedgerDateTo(v); fetchLedger(ledgerDateFrom, v); }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <label style={{ display: "block", fontSize: "0.72rem", marginBottom: "0.2rem", opacity: 0.6 }}>الخزينة</label>
-              <select className="form-control" value={ledgerCashFilter} onChange={e => setLedgerCashFilter(e.target.value)}>
-                <option value="">الكل</option>
-                {cashAccts.map(a => <option key={a.accountCode} value={a.accountCode}>{a.accountName}</option>)}
-              </select>
-            </div>
-            <button type="button" className="btn btn-sm btn-secondary" onClick={() => { fetchLedger(ledgerDateFrom, ledgerDateTo); setLedgerCashFilter(""); setLedgerDateFrom(""); setLedgerDateTo(""); }}>🔄 الكل</button>
-            <button type="button" className="btn btn-sm btn-primary" onClick={printLedger} disabled={ledgerEntries.length === 0}>🖨️ طباعة</button>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table className="tx-recent-table">
-              <thead>
-                <tr>
-                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center" }}>التاريخ</th>
-                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center" }}>الحساب</th>
-                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center" }}>النوع</th>
-                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center" }}>المبلغ</th>
-                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center" }}>الخزينة</th>
-                  <th style={{ padding: "0.4rem 0.5rem", borderBottom: "2px solid var(--card-border)", textAlign: "center" }}>البيان</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries).map((e, i) => (
-                  <tr key={e.journalId || i} onClick={() => setEditEntry(e)}
-                    style={{ cursor: "pointer", transition: "background 0.1s" }}
-                    onMouseOver={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
-                    onMouseOut={e => e.currentTarget.style.background = "transparent"}>
-                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>{e.date || "—"}</td>
-                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.accountCode)} ({e.accountCode})</td>
-                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>
-                      <span style={{ padding: "0.15rem 0.4rem", borderRadius: 4, fontSize: "0.7rem", fontWeight: 600,
-                        background: e.entryType === "income" ? "rgba(34,197,94,0.2)" : e.entryType === "expense" ? "rgba(239,68,68,0.2)" : "rgba(255,193,7,0.2)",
-                        color: e.entryType === "income" ? "#22c55e" : e.entryType === "expense" ? "#ef4444" : "#ffc107" }}>
-                        {e.entryType === "income" ? "ايراد" : e.entryType === "expense" ? "مصروف" : e.entryType === "liability" ? "مطلوبات" : e.entryType === "transfer" ? "تحويل" : e.entryType}
-                      </span>
-                    </td>
-                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontWeight: 700,
-                      color: e.entryType === "income" ? "#22c55e" : e.entryType === "expense" ? "#ef4444" : "inherit" }}>{formatCurrency(e.amount)}</td>
-                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.cashAccountCode)}</td>
-                    <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.notes || "—"}</td>
-                  </tr>
-                ))}
-                {ledgerEntries.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: "center", padding: "2rem", opacity: 0.6 }}>لا توجد قيود</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {ledgerEntries.length > 0 && (
-            <div style={{ textAlign: "left", marginTop: "0.5rem", fontSize: "0.78rem", opacity: 0.7 }}>
-              الإجمالي: <strong>{formatCurrency((ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries).reduce((s, e) => s + (e.amount || 0), 0))}</strong>
-              {" | "}عدد القيود: <strong>{(ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries).length}</strong>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Edit entry modal */}
-      {editEntry && (
-        <div className="tx-modal-overlay" onClick={() => setEditEntry(null)}>
-          <div className="tx-modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: "500px" }}>
-            <div className="tx-modal-header">
-              <strong>✏️ تعديل القيد #{editEntry.journalId || ""}</strong>
-              <button type="button" className="tx-modal-close" onClick={() => setEditEntry(null)}>✕</button>
-            </div>
-            <div className="tx-modal-body">
-              <div className="tx-form-grid">
-                <div className="form-group">
-                  <label>📅 التاريخ</label>
-                  <input type="date" className="form-control" value={editEntry.date || ""}
-                    onChange={e => setEditEntry(p => ({ ...p, date: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label>💰 المبلغ</label>
-                  <input type="number" step="0.01" className="form-control" value={editEntry.amount || ""}
-                    onChange={e => setEditEntry(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} />
-                </div>
-                <div className="form-group">
-                  <label>🏦 الحساب</label>
-                  <select className="form-control" value={editEntry.accountCode || ""}
-                    onChange={e => setEditEntry(p => ({ ...p, accountCode: e.target.value }))}>
-                    {accounts.filter(a => a.isActive !== false).map(a => (
-                      <option key={a.accountCode} value={a.accountCode}>{a.accountCode} — {a.accountName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>🏦 الخزينة</label>
-                  <select className="form-control" value={editEntry.cashAccountCode || ""}
-                    onChange={e => setEditEntry(p => ({ ...p, cashAccountCode: e.target.value }))}>
-                    {cashAccts.map(a => (
-                      <option key={a.accountCode} value={a.accountCode}>{a.accountName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group full-width">
-                  <label>📝 البيان</label>
-                  <textarea className="form-control" rows="2" value={editEntry.notes || ""}
-                    onChange={e => setEditEntry(p => ({ ...p, notes: e.target.value }))} />
-                </div>
-              </div>
-            </div>
-            <div className="tx-modal-footer" style={{ justifyContent: "space-between" }}>
-              <button type="button" className="btn btn-danger" onClick={() => setDeleteConfirm(editEntry)}>🗑️ حذف القيد</button>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setEditEntry(null)}>إلغاء</button>
-                <button type="button" className="btn btn-primary" onClick={async () => {
-                  const tk = localStorage.getItem("token");
-                  try {
-                    const r = await fetch("/api/finance/ledger", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
-                      body: JSON.stringify({ journalId: editEntry.journalId, date: editEntry.date, accountCode: editEntry.accountCode, amount: editEntry.amount, cashAccountCode: editEntry.cashAccountCode, notes: editEntry.notes }),
-                    });
-                    const d = await r.json();
-                    if (d.success) { setSuccessMsg("✅ تم تعديل القيد"); setEditEntry(null); fetchLedger(ledgerDateFrom, ledgerDateTo); }
-                    else setErrorMsg(d.error);
-                  } catch { setErrorMsg("خطأ"); }
-                }}>💾 حفظ التعديل</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete confirmation modal */}
-      {deleteConfirm && (
-        <div className="tx-modal-overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="tx-modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: "400px", textAlign: "center" }}>
-            <div className="tx-modal-header">
-              <strong>⚠️ تأكيد الحذف</strong>
-              <button type="button" className="tx-modal-close" onClick={() => setDeleteConfirm(null)}>✕</button>
-            </div>
-            <div className="tx-modal-body">
-              <p style={{ margin: "1rem 0", fontSize: "0.9rem" }}>
-                هل أنت متأكد من حذف القيد <strong>#{deleteConfirm.journalId}</strong>؟
-              </p>
-              <p style={{ fontSize: "0.78rem", opacity: 0.6 }}>
-                {acctName(deleteConfirm.accountCode)} — {formatCurrency(deleteConfirm.amount)} ريال — {deleteConfirm.date}
-              </p>
-            </div>
-            <div className="tx-modal-footer" style={{ justifyContent: "center" }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>إلغاء</button>
-              <button type="button" className="btn btn-danger" onClick={async () => {
-                const tk = localStorage.getItem("token");
-                try {
-                  const r = await fetch(`/api/finance/ledger?journalId=${deleteConfirm.journalId}`, {
-                    method: "DELETE",
-                    headers: { Authorization: `Bearer ${tk}` },
-                  });
-                  const d = await r.json();
-                  if (d.success) { setSuccessMsg("✅ تم حذف القيد"); setDeleteConfirm(null); setEditEntry(null); fetchLedger(ledgerDateFrom, ledgerDateTo); }
-                  else setErrorMsg(d.error);
-                } catch { setErrorMsg("خطأ"); }
-              }}>🗑️ تأكيد الحذف</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== دليل الحسابات ===== */}
-      {financeTab === "accounts" && (
-        <div>
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" className="btn btn-primary" onClick={() => { setEditingAcctCode(null); setAcctForm({ accountCode: "", accountName: "", accountType: "expense", parentCode: "" }); setShowAccountForm(true); }}>➕ إضافة حساب</button>
-            <label style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              <input type="checkbox" checked={showHiddenAccounts} onChange={e => setShowHiddenAccounts(e.target.checked)} />
-              عرض الحسابات المخفية
-            </label>
-          </div>
-          <div className="account-tree full-tree">
-            {accountTree.map(section => section.items.length > 0 && (
-              <div key={section.type} style={{ marginBottom: "0.75rem" }}>
-                <div style={{ fontWeight: "bold", fontSize: "0.82rem", marginBottom: "0.3rem", opacity: 0.7 }}>{section.label}</div>
-                {section.items.map(acct => (
-                  <div key={acct.accountCode} className="account-node" style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.25rem 0.4rem", borderRadius: 6, fontSize: "0.75rem", background: acct.isActive === false ? "rgba(255,0,0,0.04)" : "transparent" }}>
-                    <span className="node-indent" style={{ display: "inline-block", width: `${acct.depth * 1.2}rem`, flexShrink: 0 }} />
-                    <span className="node-code" style={{ fontFamily: "monospace", fontSize: "0.65rem", opacity: 0.6, minWidth: "4rem" }}>{acct.accountCode}</span>
-                    <span className="node-name" style={{ flex: 1 }}>{acct.accountName}</span>
-                    <span className={`node-type ${acct.accountType}`} style={{ fontSize: "0.6rem", padding: "0.1rem 0.35rem", borderRadius: 4, background: acct.accountType === "asset" ? "rgba(59,130,246,0.15)" : acct.accountType === "liability" ? "rgba(245,158,11,0.15)" : acct.accountType === "equity" ? "rgba(139,92,246,0.15)" : acct.accountType === "income" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)", color: acct.accountType === "asset" ? "#3b82f6" : acct.accountType === "liability" ? "#f59e0b" : acct.accountType === "equity" ? "#8b5cf6" : acct.accountType === "income" ? "#22c55e" : "#ef4444" }}>
-                      {acct.accountType === "asset" ? "أصل" : acct.accountType === "liability" ? "مطلوب" : acct.accountType === "equity" ? "ملكية" : acct.accountType === "income" ? "إيراد" : "مصروف"}
-                    </span>
-                    <button type="button" style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.7rem", opacity: 0.5, padding: "0.1rem 0.3rem" }}
-                      onClick={() => { setEditingAcctCode(acct.accountCode); setAcctForm({ accountCode: acct.accountCode, accountName: acct.accountName, accountType: acct.accountType, parentCode: acct.parentCode || "" }); setShowAccountForm(true); }}>✏️</button>
-                    {acct.isActive === false ? (
-                      <button type="button" style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.7rem", opacity: 0.5, padding: "0.1rem 0.3rem" }}
-                        onClick={async () => { const tk = localStorage.getItem("token"); await fetch("/api/finance/accounts", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` }, body: JSON.stringify({ accountCode: acct.accountCode, isActive: true }) }); fetchAccounts(); }}>↩️</button>
-                    ) : (
-                      <button type="button" style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.7rem", opacity: 0.5, padding: "0.1rem 0.3rem" }}
-                        onClick={async () => { const tk = localStorage.getItem("token"); await fetch("/api/finance/accounts", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` }, body: JSON.stringify({ accountCode: acct.accountCode, isActive: false }) }); fetchAccounts(); }}>🗑️</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-            {accountTree.every(s => s.items.length === 0) && <p style={{ opacity: 0.6, textAlign: "center", padding: "2rem" }}>لا توجد حسابات</p>}
-          </div>
-        </div>
-      )}
-
-      {/* ===== ضبط الأرصدة ===== */}
-      {financeTab === "adjust" && (
-        <div>
-          <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
-            <div className="form-group">
-              <label>📅 تاريخ التسوية</label>
-              <DualCalendarPicker value={adjustDate} onChange={v => setAdjustDate(v)} />
-            </div>
-            <div className="form-group full-width">
-              <label>📝 ملاحظات</label>
-              <textarea className="form-control" rows="2" value={adjustNotes} onChange={e => setAdjustNotes(e.target.value)} placeholder="اختياري..." />
-            </div>
-          </div>
-          {cashAccts.map(a => {
-            const current = cumulativeBalances[a.accountCode] || 0;
-            const desired = adjustBalances[a.accountCode] !== undefined ? adjustBalances[a.accountCode] : current;
-            const diff = desired - current;
-            return (
-              <div key={a.accountCode} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", marginBottom: "0.4rem", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <span style={{ minWidth: "8rem", fontWeight: 600, fontSize: "0.82rem" }}>{a.accountName}</span>
-                <span style={{ fontSize: "0.75rem", opacity: 0.6, minWidth: "4rem" }}>الرصيد الحالي: {formatCurrency(current)}</span>
-                <input type="number" step="0.01" className="form-control" style={{ width: "120px" }} value={desired}
-                  onChange={e => setAdjustBalances(prev => ({ ...prev, [a.accountCode]: parseFloat(e.target.value) || 0 }))} />
-                <span style={{ fontSize: "0.75rem", fontWeight: 700, color: diff > 0 ? "#22c55e" : diff < 0 ? "#ef4444" : "inherit", minWidth: "4rem" }}>
-                  {diff > 0 ? `+${formatCurrency(diff)}` : diff < 0 ? formatCurrency(diff) : "—"}
-                </span>
-              </div>
-            );
-          })}
-          {cashAccts.length === 0 && <p style={{ opacity: 0.6, textAlign: "center" }}>لا توجد خزائن</p>}
-          <div className="form-actions" style={{ marginTop: "1rem" }}>
-            <button type="button" className="btn btn-primary" disabled={adjustSubmitting} onClick={async () => {
-              setAdjustSubmitting(true);
-              const tk = localStorage.getItem("token");
-              let count = 0, errors = 0;
-              for (const a of cashAccts) {
-                const cur = cumulativeBalances[a.accountCode] || 0;
-                const des = adjustBalances[a.accountCode];
-                if (des === undefined || Math.abs(des - cur) < 0.01) continue;
-                try {
-                  const r = await fetch("/api/finance/adjust-balance", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
-                    body: JSON.stringify({ cashAccountCode: a.accountCode, correctBalance: des, date: adjustDate, notes: adjustNotes }),
-                  });
-                  const d = await r.json();
-                  if (d.success) count++; else errors++;
-                } catch { errors++; }
-              }
-              if (count > 0) setSuccessMsg(`✅ تم تسوية ${count} خزنة`);
-              if (errors > 0) setErrorMsg(`❌ فشل تسوية ${errors} خزنة`);
-              setAdjustSubmitting(false);
-              setAdjustBalances({});
-              fetchLedger(ledgerDateFrom, ledgerDateTo);
-            }}>
-              {adjustSubmitting ? "..." : "🎯 تطبيق التسوية"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Account form modal */}
-      {showAccountForm && (
-        <div className="tx-modal-overlay" onClick={() => setShowAccountForm(false)}>
-          <div className="tx-modal-box" onClick={e => e.stopPropagation()}>
-            <div className="tx-modal-header">
-              <strong>{editingAcctCode ? "✏️ تعديل حساب" : "➕ إضافة حساب"}</strong>
-              <button type="button" className="tx-modal-close" onClick={() => setShowAccountForm(false)}>✕</button>
-            </div>
-            <div className="tx-modal-body">
-              <div className="form-group">
-                <label>رمز الحساب</label>
-                <input type="text" className="form-control" value={acctForm.accountCode}
-                  onChange={e => setAcctForm(p => ({ ...p, accountCode: e.target.value }))} placeholder="مثال: 5010" disabled={!!editingAcctCode} />
-              </div>
-              <div className="form-group" style={{ marginTop: "0.5rem" }}>
-                <label>اسم الحساب</label>
-                <input type="text" className="form-control" value={acctForm.accountName}
-                  onChange={e => setAcctForm(p => ({ ...p, accountName: e.target.value }))} placeholder="اسم الحساب" />
-              </div>
-              <div className="form-group" style={{ marginTop: "0.5rem" }}>
-                <label>النوع</label>
-                <select className="form-control" value={acctForm.accountType}
-                  onChange={e => setAcctForm(p => ({ ...p, accountType: e.target.value }))}>
-                  <option value="asset">🏦 أصل</option>
-                  <option value="liability">💳 مطلوب</option>
-                  <option value="equity">👑 ملكية</option>
-                  <option value="income">🟢 إيراد</option>
-                  <option value="expense">🔴 مصروف</option>
-                </select>
-              </div>
-              <div className="form-group" style={{ marginTop: "0.5rem" }}>
-                <label>الحساب الأب (اختياري)</label>
-                <select className="form-control" value={acctForm.parentCode}
-                  onChange={e => setAcctForm(p => ({ ...p, parentCode: e.target.value }))}>
-                  <option value="">— بدون —</option>
-                  {accounts.filter(a => a.isActive !== false).map(a => (
-                    <option key={a.accountCode} value={a.accountCode}>{a.accountCode} — {a.accountName}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="tx-modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setShowAccountForm(false)}>إلغاء</button>
-              <button type="button" className="btn btn-primary" onClick={async () => {
-                if (!acctForm.accountCode || !acctForm.accountName) { setErrorMsg("رمز الحساب والاسم مطلوبان"); return; }
-                const tk = localStorage.getItem("token");
-                try {
-                  const r = await fetch("/api/finance/accounts", {
-                    method: editingAcctCode ? "PUT" : "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
-                    body: JSON.stringify(acctForm),
-                  });
-                  const d = await r.json();
-                  if (d.success) { setSuccessMsg(editingAcctCode ? "✅ تم تحديث الحساب" : "✅ تم إضافة الحساب"); setShowAccountForm(false); fetchAccounts(); }
-                  else setErrorMsg(d.error);
-                } catch { setErrorMsg("خطأ"); }
-              }}>{editingAcctCode ? "💾 حفظ التعديلات" : "💾 إضافة الحساب"}</button>
-            </div>
-          </div>
         </div>
       )}
 

@@ -6,8 +6,11 @@ import CreateBookingView from "@/views/CreateBookingView";
 import FieldOpsView from "@/views/FieldOpsView";
 import SuppliersView from "@/views/SuppliersView";
 import InventoryView from "@/views/InventoryView";
+import ProfitLossView from "@/views/ProfitLossView";
 import PackagesView from "@/views/PackagesView";
+import ExpensesView from "@/views/ExpensesView";
 import TransactionsView from "@/views/TransactionsView";
+import PaymentsView from "@/views/PaymentsView";
 import PaymentView from "@/views/PaymentView";
 import DashboardView from "@/views/DashboardView";
 import CancelView from "@/views/CancelView";
@@ -23,7 +26,9 @@ const OP_VIEWS = [
   { key: "inventory", label: "حالة المخزون", icon: "📦", adminOnly: false },
   { key: "divider", label: "", icon: "", adminOnly: true, divider: true },
   { key: "packages", label: "الباقات", icon: "🎁", adminOnly: true },
+  { key: "expenses", label: "المصروفات", icon: "💸", adminOnly: true, sub: "شجرة حسابات، تحويل، تسوية" },
   { key: "transactions", label: "المركز المالي", icon: "💰", adminOnly: true, sub: "قيود، إيجار، سندات، رواتب" },
+  { key: "payments", label: "سندات الصرف", icon: "💳", adminOnly: true },
   { key: "admin-config", label: "الإعدادات", icon: "⚙️", adminOnly: true, sub: "الأنواع والرسائل والحقول" },
   { key: "admin-finance", label: "الفروع والتكاليف", icon: "🏛️", adminOnly: true, sub: "الفروع ومراكز التكلفة" },
   { key: "admin-reports", label: "التقارير المالية", icon: "📊", adminOnly: true, sub: "قائمة الدخل والميزانية" },
@@ -37,6 +42,8 @@ export default function OperationsWorkspace() {
   const { userRole, print, view, setView } = useApp();
   const [activeView, setActiveView] = useState("query");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pnlData, setPnlData] = useState(null);
+  const [pnlLoading, setPnlLoading] = useState(false);
 
   const isAdmin = userRole === "admin";
   const visibleViews = OP_VIEWS.filter(v => !v.hidden).filter(v => v.divider || !v.adminOnly || isAdmin);
@@ -56,9 +63,24 @@ export default function OperationsWorkspace() {
     if (currentDef && !currentDef.hidden && !visibleViews.find(v => v.key === activeView)) setActiveView("query");
   }, [isAdmin]);
 
+  const fetchProfitLoss = async (from, to, costCenter) => {
+    setPnlLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (costCenter) params.set("costCenter", costCenter);
+      const res = await fetch(`/api/finance/profit-loss?${params}`);
+      const data = await res.json();
+      if (data.success) setPnlData(data);
+    } catch (err) { console.error(err); }
+    setPnlLoading(false);
+  };
+
   const selectView = (key) => {
     setActiveView(key);
     setSidebarOpen(false);
+    if (key === "profitloss") fetchProfitLoss();
   };
 
   return (
@@ -99,7 +121,10 @@ export default function OperationsWorkspace() {
         {activeView === "suppliers" && <SuppliersView />}
         {activeView === "inventory" && <InventoryView />}
         {isAdmin && activeView === "packages" && <PackagesView />}
+        {isAdmin && activeView === "expenses" && <ExpensesView />}
         {isAdmin && activeView === "transactions" && <TransactionsView />}
+        {isAdmin && activeView === "payments" && <PaymentsView />}
+        {isAdmin && activeView === "profitloss" && <ProfitLossView data={pnlData} loading={pnlLoading} />}
         {isAdmin && activeView === "admin-config" && <AdminConfig embedded />}
         {isAdmin && activeView === "admin-finance" && <AdminFinance embedded />}
         {isAdmin && activeView === "admin-reports" && <AdminReports embedded />}
