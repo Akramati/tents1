@@ -76,7 +76,7 @@ export default function TransactionsView() {
   const rentAccounts = useMemo(() => accounts.filter(a => a.parentCode === "5005" && a.isActive !== false), [accounts]);
   const [rentAccountCode, setRentAccountCode] = useState("5005-01");
   const [rentYear, setRentYear] = useState(String(new Date().getFullYear()));
-  const [rentPeriodVal, setRentPeriodVal] = useState("الربع الأول (1-3)");
+  const [rentPeriodVal, setRentPeriodVal] = useState("");
   const [rentViewMode, setRentViewMode] = useState("دفع");
   const [rentEntries, setRentEntries] = useState([]);
   const [showRentConfig, setShowRentConfig] = useState(false);
@@ -220,6 +220,7 @@ export default function TransactionsView() {
     setDebtorPayAmount("");
     setCustPayBooking(null);
     setCustPayAmount("");
+    if (id === "rent") fetchRentEntries();
   };
 
   const acctName = (code) => {
@@ -546,6 +547,25 @@ export default function TransactionsView() {
     } catch {}
   };
 
+  // Auto-select first unpaid period based on current entries
+  const getFirstUnpaidPeriod = (entries, config, year) => {
+    if (!config) return "";
+    const vals = periodTypes.find(p => p.id === config.periodType)?.values || [];
+    const target = config.amountPerPeriod || 0;
+    for (const v of vals) {
+      const key = `${year} - ${config.periodType} - ${v}`;
+      const paid = entries.filter(e => (e.notes || "").includes(key)).reduce((s, e) => s + (e.amount || 0), 0);
+      if (paid < target) return v;
+    }
+    return vals[vals.length - 1] || "";
+  };
+
+  // Auto-detect unpaid period when entries or account/year/config change
+  useEffect(() => {
+    const unpaid = getFirstUnpaidPeriod(rentEntries, currentRentConfig, rentYear);
+    if (unpaid && unpaid !== rentPeriodVal) setRentPeriodVal(unpaid);
+  }, [rentEntries, rentAccountCode, rentYear, currentRentConfig]);
+
   return (
     <section className="inventory-section glass">
       <div className="section-title-row">
@@ -778,7 +798,6 @@ export default function TransactionsView() {
                         cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0 };
                         saveRentConfigs(cfg);
                         if (editConfigAcct === rentAccountCode) {
-                          setRentPeriodVal(periodTypes.find(p => p.id === editConfigType)?.values[0] || "");
                           fetchRentEntries();
                         }
                         setShowRentConfig(false);
@@ -795,7 +814,7 @@ export default function TransactionsView() {
                   <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
                     <div className="form-group">
                       <label>🏢 الحساب</label>
-                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); setRentPeriodVal(periodTypes.find(p => p.id === (rentConfigs[e.target.value]?.periodType || "ربع سنوي"))?.values[0] || ""); fetchRentEntries(); }}>
+                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); fetchRentEntries(); }}>
                         {rentAccounts.map(a => (
                           <option key={a.accountCode} value={a.accountCode}>
                             {a.accountName} ({a.accountCode}){rentConfigs[a.accountCode] ? ` - ${rentConfigs[a.accountCode].amountPerPeriod?.toLocaleString()} ريال/${rentConfigs[a.accountCode].periodType}` : " - بدون إعداد"}
@@ -1145,7 +1164,7 @@ export default function TransactionsView() {
       )}
 
       {/* Transfer form */}
-      {opType === "transfer" && (
+      {category === "transfer" && (
         <form onSubmit={handleTransferSubmit} className="tx-form">
           <div className="tx-form-grid">
             <div className="form-group">
