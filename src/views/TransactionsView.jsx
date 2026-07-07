@@ -533,14 +533,16 @@ export default function TransactionsView() {
   const preview = getPreview();
   const currentOp = operTypes.find(o => o.id === opType);
 
-  const fetchRentEntries = async () => {
+  const fetchRentEntries = async (acctOverride, yearOverride) => {
     try {
-      const r = await fetch(`/api/finance/ledger?accountCode=${rentAccountCode}&limit=200`);
+      const acct = acctOverride || rentAccountCode;
+      const yr = yearOverride || rentYear;
+      const r = await fetch(`/api/finance/ledger?accountCode=${acct}&limit=200`);
       const d = await r.json();
       if (d.success) {
         const filtered = (d.entries || []).filter(e => {
           const notes = e.notes || "";
-          return notes.includes(rentYear);
+          return notes.includes(yr);
         });
         setRentEntries(filtered);
       }
@@ -814,7 +816,7 @@ export default function TransactionsView() {
                   <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
                     <div className="form-group">
                       <label>🏢 الحساب</label>
-                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); fetchRentEntries(); }}>
+                      <select className="form-control" value={rentAccountCode} onChange={e => { const v = e.target.value; setRentAccountCode(v); fetchRentEntries(v, rentYear); }}>
                         {rentAccounts.map(a => (
                           <option key={a.accountCode} value={a.accountCode}>
                             {a.accountName} ({a.accountCode}){rentConfigs[a.accountCode] ? ` - ${rentConfigs[a.accountCode].amountPerPeriod?.toLocaleString()} ريال/${rentConfigs[a.accountCode].periodType}` : " - بدون إعداد"}
@@ -824,7 +826,7 @@ export default function TransactionsView() {
                     </div>
                     <div className="form-group">
                       <label>📅 السنة</label>
-                      <select className="form-control" value={rentYear} onChange={e => { setRentYear(e.target.value); fetchRentEntries(); }}>
+                      <select className="form-control" value={rentYear} onChange={e => { const v = e.target.value; setRentYear(v); fetchRentEntries(rentAccountCode, v); }}>
                         {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 1 + i)).map(y => (
                           <option key={y} value={y}>{y}</option>
                         ))}
@@ -944,7 +946,7 @@ export default function TransactionsView() {
                   <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
                     <div className="form-group">
                       <label>🏢 الحساب</label>
-                      <select className="form-control" value={rentAccountCode} onChange={e => { setRentAccountCode(e.target.value); fetchRentEntries(); }}>
+                      <select className="form-control" value={rentAccountCode} onChange={e => { const v = e.target.value; setRentAccountCode(v); fetchRentEntries(v, rentYear); }}>
                         {rentAccounts.map(a => (
                           <option key={a.accountCode} value={a.accountCode}>{a.accountName} ({a.accountCode})</option>
                         ))}
@@ -952,7 +954,7 @@ export default function TransactionsView() {
                     </div>
                     <div className="form-group">
                       <label>📅 السنة</label>
-                      <select className="form-control" value={rentYear} onChange={e => { setRentYear(e.target.value); fetchRentEntries(); }}>
+                      <select className="form-control" value={rentYear} onChange={e => { const v = e.target.value; setRentYear(v); fetchRentEntries(rentAccountCode, v); }}>
                         {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 1 + i)).map(y => (
                           <option key={y} value={y}>{y}</option>
                         ))}
