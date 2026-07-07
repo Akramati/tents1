@@ -93,6 +93,8 @@ export default function TransactionsView() {
   const [editingAcctCode, setEditingAcctCode] = useState(null);
   const [acctForm, setAcctForm] = useState({ accountCode: "", accountName: "", accountType: "expense", parentCode: "" });
   const [showHiddenAccounts, setShowHiddenAccounts] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const rentAccounts = useMemo(() => accounts.filter(a => a.parentCode === "5005" && a.isActive !== false), [accounts]);
   const [rentAccountCode, setRentAccountCode] = useState("5005-01");
   const [rentYear, setRentYear] = useState(String(new Date().getFullYear()));
@@ -602,6 +604,17 @@ export default function TransactionsView() {
         setRentEntries(filtered);
       }
     } catch {}
+  };
+
+  const printLedger = () => {
+    const displayData = (ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries);
+    if (displayData.length === 0) return;
+    const rows = displayData.map(e => `<tr><td>${e.date || ""}</td><td>${acctName(e.accountCode)} (${e.accountCode})</td><td>${e.entryType === "income" ? "ايراد" : e.entryType === "expense" ? "مصروف" : e.entryType}</td><td>${formatCurrency(e.amount)}</td><td>${acctName(e.cashAccountCode)}</td><td>${e.notes || ""}</td></tr>`).join("");
+    const total = displayData.reduce((s, e) => s + (e.amount || 0), 0);
+    print({
+      title: "دفتر اليومية",
+      content: `<table style="width:100%;border-collapse:collapse;font-size:12px" border="1" cellpadding="6"><thead><tr style="background:#f0f0f0"><th>التاريخ</th><th>الحساب</th><th>النوع</th><th>المبلغ</th><th>الخزينة</th><th>البيان</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:8px;font-weight:bold">الإجمالي: ${formatCurrency(total)}</p>`
+    });
   };
 
   return (
@@ -1568,22 +1581,24 @@ export default function TransactionsView() {
       {/* ===== دفتر اليومية ===== */}
       {financeTab === "ledger" && (
         <div className="tx-rent-statement">
-          <div className="tx-form-grid" style={{ marginBottom: "1rem" }}>
-            <div className="form-group">
-              <label>من تاريخ</label>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <label style={{ display: "block", fontSize: "0.72rem", marginBottom: "0.2rem", opacity: 0.6 }}>من تاريخ</label>
               <DualCalendarPicker value={ledgerDateFrom} onChange={v => { setLedgerDateFrom(v); fetchLedger(v, ledgerDateTo); }} />
             </div>
-            <div className="form-group">
-              <label>إلى تاريخ</label>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <label style={{ display: "block", fontSize: "0.72rem", marginBottom: "0.2rem", opacity: 0.6 }}>إلى تاريخ</label>
               <DualCalendarPicker value={ledgerDateTo} onChange={v => { setLedgerDateTo(v); fetchLedger(ledgerDateFrom, v); }} />
             </div>
-            <div className="form-group">
-              <label>الخزينة</label>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <label style={{ display: "block", fontSize: "0.72rem", marginBottom: "0.2rem", opacity: 0.6 }}>الخزينة</label>
               <select className="form-control" value={ledgerCashFilter} onChange={e => setLedgerCashFilter(e.target.value)}>
                 <option value="">الكل</option>
                 {cashAccts.map(a => <option key={a.accountCode} value={a.accountCode}>{a.accountName}</option>)}
               </select>
             </div>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={() => { fetchLedger(ledgerDateFrom, ledgerDateTo); setLedgerCashFilter(""); setLedgerDateFrom(""); setLedgerDateTo(""); }}>🔄 الكل</button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={printLedger} disabled={ledgerEntries.length === 0}>🖨️ طباعة</button>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="tx-recent-table">
@@ -1599,7 +1614,10 @@ export default function TransactionsView() {
               </thead>
               <tbody>
                 {(ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries).map((e, i) => (
-                  <tr key={e.journalId || i}>
+                  <tr key={e.journalId || i} onClick={() => setEditEntry(e)}
+                    style={{ cursor: "pointer", transition: "background 0.1s" }}
+                    onMouseOver={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                    onMouseOut={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>{e.date || "—"}</td>
                     <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.accountCode)} ({e.accountCode})</td>
                     <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>
@@ -1620,6 +1638,115 @@ export default function TransactionsView() {
                 )}
               </tbody>
             </table>
+          </div>
+          {ledgerEntries.length > 0 && (
+            <div style={{ textAlign: "left", marginTop: "0.5rem", fontSize: "0.78rem", opacity: 0.7 }}>
+              الإجمالي: <strong>{formatCurrency((ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries).reduce((s, e) => s + (e.amount || 0), 0))}</strong>
+              {" | "}عدد القيود: <strong>{(ledgerCashFilter ? ledgerEntries.filter(e => e.cashAccountCode === ledgerCashFilter) : ledgerEntries).length}</strong>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Edit entry modal */}
+      {editEntry && (
+        <div className="tx-modal-overlay" onClick={() => setEditEntry(null)}>
+          <div className="tx-modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: "500px" }}>
+            <div className="tx-modal-header">
+              <strong>✏️ تعديل القيد #{editEntry.journalId || ""}</strong>
+              <button type="button" className="tx-modal-close" onClick={() => setEditEntry(null)}>✕</button>
+            </div>
+            <div className="tx-modal-body">
+              <div className="tx-form-grid">
+                <div className="form-group">
+                  <label>📅 التاريخ</label>
+                  <input type="date" className="form-control" value={editEntry.date || ""}
+                    onChange={e => setEditEntry(p => ({ ...p, date: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label>💰 المبلغ</label>
+                  <input type="number" step="0.01" className="form-control" value={editEntry.amount || ""}
+                    onChange={e => setEditEntry(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} />
+                </div>
+                <div className="form-group">
+                  <label>🏦 الحساب</label>
+                  <select className="form-control" value={editEntry.accountCode || ""}
+                    onChange={e => setEditEntry(p => ({ ...p, accountCode: e.target.value }))}>
+                    {accounts.filter(a => a.isActive !== false).map(a => (
+                      <option key={a.accountCode} value={a.accountCode}>{a.accountCode} — {a.accountName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>🏦 الخزينة</label>
+                  <select className="form-control" value={editEntry.cashAccountCode || ""}
+                    onChange={e => setEditEntry(p => ({ ...p, cashAccountCode: e.target.value }))}>
+                    {cashAccts.map(a => (
+                      <option key={a.accountCode} value={a.accountCode}>{a.accountName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group full-width">
+                  <label>📝 البيان</label>
+                  <textarea className="form-control" rows="2" value={editEntry.notes || ""}
+                    onChange={e => setEditEntry(p => ({ ...p, notes: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+            <div className="tx-modal-footer" style={{ justifyContent: "space-between" }}>
+              <button type="button" className="btn btn-danger" onClick={() => setDeleteConfirm(editEntry)}>🗑️ حذف القيد</button>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditEntry(null)}>إلغاء</button>
+                <button type="button" className="btn btn-primary" onClick={async () => {
+                  const tk = localStorage.getItem("token");
+                  try {
+                    const r = await fetch("/api/finance/ledger", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+                      body: JSON.stringify({ journalId: editEntry.journalId, date: editEntry.date, accountCode: editEntry.accountCode, amount: editEntry.amount, cashAccountCode: editEntry.cashAccountCode, notes: editEntry.notes }),
+                    });
+                    const d = await r.json();
+                    if (d.success) { setSuccessMsg("✅ تم تعديل القيد"); setEditEntry(null); fetchLedger(ledgerDateFrom, ledgerDateTo); }
+                    else setErrorMsg(d.error);
+                  } catch { setErrorMsg("خطأ"); }
+                }}>💾 حفظ التعديل</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="tx-modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="tx-modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: "400px", textAlign: "center" }}>
+            <div className="tx-modal-header">
+              <strong>⚠️ تأكيد الحذف</strong>
+              <button type="button" className="tx-modal-close" onClick={() => setDeleteConfirm(null)}>✕</button>
+            </div>
+            <div className="tx-modal-body">
+              <p style={{ margin: "1rem 0", fontSize: "0.9rem" }}>
+                هل أنت متأكد من حذف القيد <strong>#{deleteConfirm.journalId}</strong>؟
+              </p>
+              <p style={{ fontSize: "0.78rem", opacity: 0.6 }}>
+                {acctName(deleteConfirm.accountCode)} — {formatCurrency(deleteConfirm.amount)} ريال — {deleteConfirm.date}
+              </p>
+            </div>
+            <div className="tx-modal-footer" style={{ justifyContent: "center" }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>إلغاء</button>
+              <button type="button" className="btn btn-danger" onClick={async () => {
+                const tk = localStorage.getItem("token");
+                try {
+                  const r = await fetch(`/api/finance/ledger?journalId=${deleteConfirm.journalId}`, {
+                    method: "DELETE",
+                    headers: { Authorization: `Bearer ${tk}` },
+                  });
+                  const d = await r.json();
+                  if (d.success) { setSuccessMsg("✅ تم حذف القيد"); setDeleteConfirm(null); setEditEntry(null); fetchLedger(ledgerDateFrom, ledgerDateTo); }
+                  else setErrorMsg(d.error);
+                } catch { setErrorMsg("خطأ"); }
+              }}>🗑️ تأكيد الحذف</button>
+            </div>
           </div>
         </div>
       )}
