@@ -743,7 +743,7 @@ export default function TransactionsView() {
               {/* View mode tabs */}
               <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
                 <button type="button" className={`btn ${rentViewMode === "دفع" ? "btn-primary" : "btn-secondary"}`}
-                  onClick={() => setRentViewMode("دفع")}>💰 دفع إيجار</button>
+                  onClick={() => { setRentViewMode("دفع"); fetchRentEntries(); }}>💰 دفع إيجار</button>
                 <button type="button" className={`btn ${rentViewMode === "كشف" ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => { setRentViewMode("كشف"); fetchRentEntries(); }}>📋 كشف الإيجار</button>
                 <button type="button" className="btn btn-secondary" onClick={() => {
