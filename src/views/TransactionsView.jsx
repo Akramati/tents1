@@ -15,6 +15,7 @@ const OP_TYPES = {
     { id: "rent", label: "إيجار", icon: "🏢", desc: "إيجار منشأة أو أرض", debitAuto: "5005", entryType: "expense" },
     { id: "salaries", label: "رواتب", icon: "👥", desc: "صرف رواتب الموظفين", debitAuto: "5004", entryType: "expense" },
     { id: "general", label: "مصروف عام", icon: "📋", desc: "اختر حساب المصروف", entryType: "expense" },
+    { id: "voucher", label: "سند صرف", icon: "🧾", desc: "سند صرف نقدي مع تحديد المستلم", entryType: "expense" },
   ],
   income: [
     { id: "customer", label: "تحصيل من عميل", icon: "👤", desc: "تسديد ذمم عميل", creditAuto: "1202", entryType: "income" },
@@ -22,7 +23,7 @@ const OP_TYPES = {
   ],
 };
 
-const isFixedExpense = (t) => t === "withdrawal" || t === "salaries";
+const isFixedExpense = (t) => t === "withdrawal" || t === "salaries" || t === "voucher";
 export default function TransactionsView() {
   const { formatCurrency, setSuccessMsg, setErrorMsg, getTodayString, print, userRole } = useApp();
   const [category, setCategory] = useState("expense");
@@ -38,6 +39,11 @@ export default function TransactionsView() {
   const [fromAccount, setFromAccount] = useState("1101");
   const [toAccount, setToAccount] = useState("1102");
   const [notes, setNotes] = useState("");
+  const [recipient, setRecipient] = useState("");
+
+  // Voucher debit account
+  const [voucherAccount, setVoucherAccount] = useState(null);
+  const [voucherSearch, setVoucherSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerResults, setCustomerResults] = useState([]);
@@ -220,6 +226,9 @@ export default function TransactionsView() {
     setDebtorPayAmount("");
     setCustPayBooking(null);
     setCustPayAmount("");
+    setVoucherAccount(null);
+    setVoucherSearch("");
+    setRecipient("");
     if (id === "rent") fetchRentEntries();
   };
 
@@ -247,6 +256,10 @@ export default function TransactionsView() {
     if (opType === "general") {
       if (!expenseAccount) return null;
       return { debit: { code: expenseAccount.accountCode, name: expenseAccount.accountName }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
+    }
+    if (opType === "voucher") {
+      if (!voucherAccount) return null;
+      return { debit: { code: voucherAccount.accountCode, name: voucherAccount.accountName }, credit: { code: cashAccount, name: acctName(cashAccount) }, amount: amt };
     }
     if (opType === "customer") {
       return { debit: { code: cashAccount, name: acctName(cashAccount) }, credit: { code: "1202", name: "ذمم مدينة - عملاء" }, amount: amt };
@@ -403,6 +416,7 @@ export default function TransactionsView() {
     if (opType === "withdrawal") accountCode = wdAccount;
     else if (opType === "rent") accountCode = rentAccountCode;
     else if (opType === "salaries") accountCode = op.debitAuto;
+    else if (opType === "voucher") accountCode = voucherAccount?.accountCode;
     else accountCode = expenseAccount.accountCode;
     const entryType = op.entryType;
 
@@ -472,6 +486,21 @@ export default function TransactionsView() {
       let d;
       if (opType === "rent" && parseFloat(amount) > 0) {
         d = await doRentSplit(parseFloat(amount));
+      } else if (opType === "voucher") {
+        if (!voucherAccount) { setErrorMsg("اختر الحساب المدين"); setSubmitting(false); return; }
+        const vr = await fetch("/api/finance/vouchers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+          body: JSON.stringify({
+            date: entryDate,
+            recipient,
+            accountCode: voucherAccount.accountCode,
+            cashAccountCode: cashAccount,
+            amount: parseFloat(amount),
+            notes,
+          }),
+        });
+        d = await vr.json();
       } else {
         const r = await fetch("/api/finance/ledger", {
           method: "POST",
@@ -491,6 +520,7 @@ export default function TransactionsView() {
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
+        if (opType === "voucher") { setVoucherAccount(null); setVoucherSearch(""); setRecipient(""); }
         if (opType === "rent") {
           // Refresh entries then auto-advance to next unpaid period
           setTimeout(async () => {
@@ -637,31 +667,58 @@ export default function TransactionsView() {
           {(isFixedExpense(opType) || opType === "general") && (
             <>
               <div className="tx-form-grid">
-                {(opType === "general") && (
+                {(opType === "general" || opType === "voucher") && (
                   <div className="form-group">
-                    <label>🔴 حساب المصروف <span className="required">*</span></label>
+                    <label>{opType === "voucher" ? "🧾 الحساب المدين" : "🔴 حساب المصروف"} <span className="required">*</span></label>
                     <div style={{ position: "relative" }}>
-                      <input type="text" className="form-control"
-                        placeholder={expenseAccount ? `✅ ${expenseAccount.accountName}` : "ابحث عن حساب مصروف..."}
-                        value={expenseAccount ? "" : expenseSearch}
-                        onChange={e => { setExpenseSearch(e.target.value); setShowExpenseDropdown(true); if (expenseAccount) setExpenseAccount(null); }}
-                        onFocus={() => setShowExpenseDropdown(true)}
-                        onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)} />
-                      {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length > 0 && (
-                        <div className="acct-search-dropdown">
-                          {filteredExpense.slice(0, 15).map(a => (
-                            <div key={a.accountCode} className="acct-search-item expense"
-                              onMouseDown={() => { setExpenseAccount(a); setShowExpenseDropdown(false); setExpenseSearch(""); }}>
-                              <span className="asi-name">{a.accountName}</span>
-                              <span className="asi-code">{a.accountCode}</span>
+                      {opType === "voucher" ? (
+                        <>
+                          <input type="text" className="form-control"
+                            placeholder={voucherAccount ? `✅ ${voucherAccount.accountName}` : "ابحث عن حساب (جميع الأنواع)..."}
+                            value={voucherAccount ? "" : voucherSearch}
+                            onChange={e => { setVoucherSearch(e.target.value); if (voucherAccount) setVoucherAccount(null); }}
+                            onFocus={() => {}}
+                            onBlur={() => {}} />
+                          {voucherSearch.trim() && (
+                            <div className="acct-search-dropdown">
+                              {accounts.filter(a => a.isActive !== false && (a.accountName.toLowerCase().includes(voucherSearch.toLowerCase()) || a.accountCode.includes(voucherSearch))).slice(0, 15).map(a => (
+                                <div key={a.accountCode} className={`acct-search-item ${a.accountType}`}
+                                  onMouseDown={() => { setVoucherAccount(a); setVoucherSearch(""); }}>
+                                  <span className="asi-name">{a.accountName}</span>
+                                  <span className="asi-code">{a.accountCode}</span>
+                                </div>
+                              ))}
+                              {accounts.filter(a => a.isActive !== false && (a.accountName.toLowerCase().includes(voucherSearch.toLowerCase()) || a.accountCode.includes(voucherSearch))).length === 0 && (
+                                <div className="acct-search-empty">لا توجد نتائج</div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                      {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length === 0 && (
-                        <div className="acct-search-dropdown">
-                          <div className="acct-search-empty">لا توجد نتائج</div>
-                        </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <input type="text" className="form-control"
+                            placeholder={expenseAccount ? `✅ ${expenseAccount.accountName}` : "ابحث عن حساب مصروف..."}
+                            value={expenseAccount ? "" : expenseSearch}
+                            onChange={e => { setExpenseSearch(e.target.value); setShowExpenseDropdown(true); if (expenseAccount) setExpenseAccount(null); }}
+                            onFocus={() => setShowExpenseDropdown(true)}
+                            onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)} />
+                          {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length > 0 && (
+                            <div className="acct-search-dropdown">
+                              {filteredExpense.slice(0, 15).map(a => (
+                                <div key={a.accountCode} className="acct-search-item expense"
+                                  onMouseDown={() => { setExpenseAccount(a); setShowExpenseDropdown(false); setExpenseSearch(""); }}>
+                                  <span className="asi-name">{a.accountName}</span>
+                                  <span className="asi-code">{a.accountCode}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {showExpenseDropdown && expenseSearch.trim() && filteredExpense.length === 0 && (
+                            <div className="acct-search-dropdown">
+                              <div className="acct-search-empty">لا توجد نتائج</div>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -670,6 +727,12 @@ export default function TransactionsView() {
                   <div className="tx-auto-banner" style={{ gridColumn: "1 / -1" }}>
                     <span>🏦 حساب تلقائي: </span>
                     <strong>{currentOp?.debitAuto} — {acctName(currentOp?.debitAuto)}</strong>
+                  </div>
+                )}
+                {opType === "voucher" && (
+                  <div className="form-group">
+                    <label>👤 المستلم</label>
+                    <input type="text" className="form-control" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="اسم المستلم..." />
                   </div>
                 )}
                 <div className="form-group">
@@ -690,7 +753,7 @@ export default function TransactionsView() {
                 </div>
                 <div className="form-group full-width">
                   <label>📝 البيان</label>
-                  <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder={opType === "withdrawal" ? "سحب شخصي" : "سبب العملية..."} />
+                  <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder={opType === "withdrawal" ? "سحب شخصي" : opType === "voucher" ? "سبب الصرف..." : "سبب العملية..."} />
                 </div>
               </div>
               {/* Journal preview */}
@@ -713,7 +776,7 @@ export default function TransactionsView() {
               )}
               <div className="form-actions" style={{ marginTop: "1rem" }}>
                 <button type="submit" className="btn btn-primary btn-lg" disabled={submitting || !amount || parseFloat(amount) <= 0}>
-                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : opType === "salaries" ? "👥 تسجيل رواتب" : "🔴 تسجيل مصروف عام"}
+                  {submitting ? "..." : opType === "withdrawal" ? "👤 تسجيل مسحوبات" : opType === "salaries" ? "👥 تسجيل رواتب" : opType === "voucher" ? "🧾 حفظ سند الصرف" : "🔴 تسجيل مصروف عام"}
                 </button>
               </div>
             </>
