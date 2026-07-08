@@ -1044,27 +1044,27 @@ export default function TransactionsView() {
                       </div>
                       <div style={{ marginTop: "0.5rem", textAlign: "center" }}>
                         <button type="button" className="btn btn-gold" onClick={() => {
-                          const periodFiltered = rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal));
+                          const pf = rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal));
                           print("REPORT_TABLE", {
                             title: `📋 كشف إيجار - ${acctName(rentAccountCode)}`,
                             dateHeader: `${rentYear} - ${rentPeriodVal}`,
                             headers: ["التاريخ", "الفترة", "المبلغ", "الخزينة", "البيان"],
-                            rows: periodFiltered.map(e => ({
+                            rows: pf.map(e => ({
                               cells: [e.date || "—", rentPeriodVal, formatCurrency(e.amount), acctName(e.cashAccountCode), ((e.notes || "").split(" - ").slice(2).join(" - ")) || "—"],
                               type: "expense",
                             })),
                             totalLabels: { expense: `إجمالي ${rentPeriodVal}` },
-                            totals: { expense: formatCurrency(periodFiltered.reduce((s, e) => s + (e.amount || 0), 0)) },
+                            totals: { expense: formatCurrency(pf.reduce((s, e) => s + (e.amount || 0), 0)) },
                           });
                         }}>🖨️ طباعة كشف الفترة</button>
-                        {rentAcct?.lessorPhone && periodFiltered.length > 0 && (
+                        {rentAcct?.lessorPhone && rentEntries.some(e => (e.notes || "").includes(rentPeriodVal)) && (
                           <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(
 `السلام عليكم، كشف إيجار ${acctName(rentAccountCode)}
 ${rentYear} - ${rentPeriodVal}
 
-${periodFiltered.map((e, i) => `${i+1}. ${e.date} - ${formatCurrency(e.amount)} ريال - ${acctName(e.cashAccountCode)}`).join("\n")}
+${rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal)).map((e, i) => `${i+1}. ${e.date} - ${formatCurrency(e.amount)} ريال - ${acctName(e.cashAccountCode)}`).join("\n")}
 
-الإجمالي: ${formatCurrency(periodFiltered.reduce((s, e) => s + (e.amount || 0), 0))} ريال`
+الإجمالي: ${formatCurrency(rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal)).reduce((s, e) => s + (e.amount || 0), 0))} ريال`
                           )}`} target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: "none" }}>
                             📱 واتساب كشف الفترة
                           </a>
