@@ -2320,6 +2320,30 @@ button, .btn {
 .tx-rent-statement { width: 100%; }
 .tx-empty { text-align: center; opacity: 0.6; font-size: 0.85rem; }
 
+/* Gemini FAB */
+.gemini-fab {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 900;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #0d9488, #059669);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(5,150,105,0.4);
+  transition: all 0.2s;
+}
+.gemini-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 28px rgba(5,150,105,0.55);
+}
+
 /* Customer payment */
 .tx-cust-books { margin-top: 1rem; }
 .tx-cust-books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }

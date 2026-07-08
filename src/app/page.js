@@ -3,10 +3,12 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import OperationsWorkspace from "@/views/OperationsWorkspace";
 import { useAuth } from "@/contexts/AuthContext";
+import GeminiChat from "@/components/GeminiChat";
 
 export default function Home() {
   const { view, setView, userRole, errorMsg, setErrorMsg, successMsg, setSuccessMsg, lastBooking, setLastBooking, handlePrint } = useApp();
   const { logout } = useAuth();
+  const [showGemini, setShowGemini] = useState(false);
 
   return (
     <div className="container">
@@ -53,6 +55,7 @@ export default function Home() {
       )}
 
       {/* Main View Area */}
+      {/* Main View Area */}
       <main className="content-area">
         <OperationsWorkspace />
       </main>
@@ -63,6 +66,14 @@ export default function Home() {
         </button>
         <p className="copyright">حقوق النشر © 2026 هابي لاند. جميع الحقوق محفوظة.</p>
       </footer>
+
+      {/* Gemini AI Chat Button & Modal */}
+      <button className="gemini-fab" onClick={() => setShowGemini(true)} title="المساعد الذكي">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        </svg>
+      </button>
+      {showGemini && <GeminiChat onClose={() => setShowGemini(false)} />}
     </div>
   );
 }
