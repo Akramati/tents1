@@ -112,7 +112,7 @@ export default function DualCalendarPicker({ value, onChange, id, name, required
         </button>
       </div>
       {open && (
-        <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 1000, background: "#fff", color: "#1f2937", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "0.75rem", width: "340px", boxShadow: "0 8px 24px rgba(0,0,0,0.15)", marginTop: "0.25rem" }}>
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000, background: "#fff", color: "#1f2937", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "0.75rem", width: "340px", maxWidth: "90vw", boxShadow: "0 8px 24px rgba(0,0,0,0.15)", marginTop: "0.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
             <button type="button" onClick={prevMonth} style={{ border: "none", background: "none", cursor: "pointer", fontSize: "1.2rem", padding: "0.25rem 0.5rem", color: "var(--primary)" }}>◀</button>
             <div style={{ textAlign: "center" }}>

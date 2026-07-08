@@ -546,7 +546,8 @@ export default function QueryView() {
                         {incomes.length > 0 && (
                           <div style={{marginTop:"0.75rem"}}>
                             <strong style={{color:"#4caf50"}}>💰 الدفعات والإيرادات</strong>
-                            <table className="inv-table" style={{marginTop:"0.25rem"}}>
+                            <div className="inv-table-wrapper" style={{marginTop:"0.25rem"}}>
+                            <table className="inv-table">
                               <thead>
                                 <tr>
                                   <th>التاريخ</th>
@@ -566,12 +567,14 @@ export default function QueryView() {
                                 ))}
                               </tbody>
                             </table>
+                            </div>
                           </div>
                         )}
                         {expenses.length > 0 && (
                           <div style={{marginTop:"0.75rem"}}>
                             <strong style={{color:"#ff4444"}}>🔴 المصاريف التشغيلية</strong>
-                            <table className="inv-table" style={{marginTop:"0.25rem"}}>
+                            <div className="inv-table-wrapper" style={{marginTop:"0.25rem"}}>
+                            <table className="inv-table">
                               <thead>
                                 <tr>
                                   <th>التاريخ</th>
@@ -591,6 +594,7 @@ export default function QueryView() {
                                 ))}
                               </tbody>
                             </table>
+                            </div>
                           </div>
                         )}
                         <div style={{marginTop:"0.75rem",padding:"0.5rem",background:"rgba(255,255,255,0.05)",borderRadius:"8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -645,6 +649,7 @@ export default function QueryView() {
             <div className="modal-body">
               <p style={{marginBottom:"1rem", opacity:0.7}}><strong>{openItemsBookingId}</strong></p>
               {rentedItemsCache[openItemsBookingId]?.length > 0 ? (
+                <div className="inv-table-wrapper">
                 <table className="inv-table">
                   <thead>
                     <tr>
@@ -661,6 +666,7 @@ export default function QueryView() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               ) : (
                 <p className="text-muted">لا توجد أصناف مسجلة لهذا الحجز</p>
               )}
