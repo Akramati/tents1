@@ -1057,6 +1057,18 @@ export default function TransactionsView() {
                             totals: { expense: formatCurrency(periodFiltered.reduce((s, e) => s + (e.amount || 0), 0)) },
                           });
                         }}>🖨️ طباعة كشف الفترة</button>
+                        {rentAcct?.lessorPhone && periodFiltered.length > 0 && (
+                          <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(
+`السلام عليكم، كشف إيجار ${acctName(rentAccountCode)}
+${rentYear} - ${rentPeriodVal}
+
+${periodFiltered.map((e, i) => `${i+1}. ${e.date} - ${formatCurrency(e.amount)} ريال - ${acctName(e.cashAccountCode)}`).join("\n")}
+
+الإجمالي: ${formatCurrency(periodFiltered.reduce((s, e) => s + (e.amount || 0), 0))} ريال`
+                          )}`} target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: "none" }}>
+                            📱 واتساب كشف الفترة
+                          </a>
+                        )}
                         <button type="button" className="btn btn-gold" style={{ marginRight: "0.5rem" }} onClick={() => {
                           print("REPORT_TABLE", {
                             title: `📋 كشف إيجار سنوي - ${acctName(rentAccountCode)}`,
@@ -1073,10 +1085,19 @@ export default function TransactionsView() {
                             totals: { expense: formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0)) },
                           });
                         }}>🖨️ طباعة الكشف السنوي</button>
-                        {(rentAcct?.lessorPhone || currentRentConfig?.lessorPhone) && (
-                          <a href={`https://wa.me/${(rentAcct?.lessorPhone || currentRentConfig?.lessorPhone || "").replace(/^0+/, "966")}?text=${encodeURIComponent(`السلام عليكم، كشف إيجار ${acctName(rentAccountCode)} لفترات ${rentYear}`)}`}
-                            target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: "none" }}>
-                            📱 إرسال كشف للمؤجر
+                        {rentAcct?.lessorPhone && rentEntries.length > 0 && (
+                          <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(
+`السلام عليكم، كشف إيجار ${acctName(rentAccountCode)} السنوي
+${rentYear}
+
+${rentEntries.map((e, i) => {
+  const np = (e.notes || "").split(" - ");
+  return `${i+1}. ${e.date} - ${np[1] || "—"} - ${formatCurrency(e.amount)} ريال - ${acctName(e.cashAccountCode)}`;
+}).join("\n")}
+
+الإجمالي: ${formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0))} ريال`
+                          )}`} target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: "none" }}>
+                            📱 واتساب الكشف السنوي
                           </a>
                         )}
                       </div>
