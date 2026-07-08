@@ -21,7 +21,7 @@ async function ensureSheet() {
       spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A1",
       valueInputOption: "RAW",
       requestBody: {
-        values: [["AccountCode", "AccountName", "AccountType", "ParentCode", "LinkedBookingType", "IsActive", "CostCenterCode"]],
+        values: [["AccountCode", "AccountName", "AccountType", "ParentCode", "LinkedBookingType", "IsActive", "CostCenterCode", "LessorName", "LessorPhone"]],
       },
     });
     const defaultAccounts = [
@@ -247,10 +247,50 @@ async function ensureCostCenterCodeColumn() {
   } catch { /* sheet may not exist yet */ }
 }
 
+async function ensureLessorColumns() {
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A1:I1",
+    });
+    const existingHeaders = res.data.values?.[0] || [];
+    if (!existingHeaders.includes("LessorName")) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!H1",
+        valueInputOption: "RAW",
+        requestBody: { values: [["LessorName"]] },
+      });
+    }
+    if (!existingHeaders.includes("LessorPhone")) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!I1",
+        valueInputOption: "RAW",
+        requestBody: { values: [["LessorPhone"]] },
+      });
+    }
+    if (!existingHeaders.includes("LessorName") || !existingHeaders.includes("LessorPhone")) {
+      const accts = await getSheetData("Chart_Of_Accounts", "A2:G");
+      if (accts.length > 0) {
+        const fill = accts.map(() => [""]);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!H2",
+          valueInputOption: "RAW",
+          requestBody: { values: fill },
+        });
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!I2",
+          valueInputOption: "RAW",
+          requestBody: { values: fill },
+        });
+      }
+    }
+  } catch {}
+}
+
 export async function GET(request) {
   try {
     await ensureSheet();
     await ensureCostCenterCodeColumn();
+    await ensureLessorColumns();
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("includeInactive") === "true";
     const accounts = await getChartOfAccounts(includeInactive);
@@ -286,12 +326,12 @@ export async function PUT(request) {
     if (auth.error) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
     await ensureSheet();
     const body = await request.json();
-    const { originalCode, accountCode, accountName, accountType, parentCode, linkedBookingType, costCenterCode } = body;
+    const { originalCode, accountCode, accountName, accountType, parentCode, linkedBookingType, costCenterCode, lessorName, lessorPhone } = body;
     if (!originalCode) {
       return NextResponse.json({ success: false, error: "كود الحساب الأصلي مطلوب" }, { status: 400 });
     }
     const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A:G",
+      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A:I",
     });
     const rows = res.data.values || [];
     const idx = rows.findIndex((r) => r[0] === originalCode);
@@ -299,7 +339,7 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: "الحساب غير موجود" }, { status: 404 });
     }
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID, range: `Chart_Of_Accounts!A${idx + 1}:G${idx + 1}`,
+      spreadsheetId: SPREADSHEET_ID, range: `Chart_Of_Accounts!A${idx + 1}:I${idx + 1}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [[
@@ -310,6 +350,8 @@ export async function PUT(request) {
           linkedBookingType ?? rows[idx][4] ?? "",
           rows[idx][5] ?? "TRUE",
           costCenterCode !== undefined ? costCenterCode : (rows[idx][6] || ""),
+          lessorName !== undefined ? lessorName : (rows[idx][7] || ""),
+          lessorPhone !== undefined ? lessorPhone : (rows[idx][8] || ""),
         ]],
       },
     });
@@ -329,7 +371,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: false, error: "كود الحساب مطلوب" }, { status: 400 });
     }
     const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A:G",
+      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A:I",
     });
     const rows = res.data.values || [];
     const idx = rows.findIndex((r) => r[0] === accountCode);
@@ -359,7 +401,7 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, error: "كود الحساب مطلوب" }, { status: 400 });
     }
     const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A:G",
+      spreadsheetId: SPREADSHEET_ID, range: "Chart_Of_Accounts!A:I",
     });
     const rows = res.data.values || [];
     const allIndices = rows.map((r, i) => r[0] === code ? i : -1).filter(i => i >= 0);
@@ -371,7 +413,7 @@ export async function DELETE(request) {
       for (const idx of allIndices) {
         await sheets.spreadsheets.values.clear({
           spreadsheetId: SPREADSHEET_ID,
-          range: `Chart_Of_Accounts!A${idx + 1}:G${idx + 1}`,
+          range: `Chart_Of_Accounts!A${idx + 1}:I${idx + 1}`,
         });
       }
       return NextResponse.json({ success: true, message: `تم حذف الحساب ${code} نهائياً` });

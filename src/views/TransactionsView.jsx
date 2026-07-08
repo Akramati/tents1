@@ -99,6 +99,7 @@ export default function TransactionsView() {
     { id: "شهري", label: "شهري", values: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"] },
   ];
   const currentRentConfig = rentConfigs[rentAccountCode];
+  const rentAcct = useMemo(() => accounts.find(a => a.accountCode === rentAccountCode), [accounts, rentAccountCode]);
   const effectiveRentPeriodType = currentRentConfig?.periodType || "ربع سنوي";
   const rentPeriodLabel = currentRentConfig ? `${rentYear} - ${currentRentConfig.periodType} - ${rentPeriodVal}` : "";
 
@@ -493,8 +494,9 @@ export default function TransactionsView() {
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
-        if (opType === "rent" && currentRentConfig?.lessorPhone) {
-          const cleanPhone = currentRentConfig.lessorPhone.replace(/^0+/, "966");
+        if (opType === "rent" && (rentAcct?.lessorPhone || currentRentConfig?.lessorPhone)) {
+          const phone = rentAcct?.lessorPhone || currentRentConfig?.lessorPhone || "";
+          const cleanPhone = phone.replace(/^0+/, "966");
           const msg = encodeURIComponent(`السلام عليكم، تم تسديد دفعة إيجار ${rentPeriodVal} لمبلغ ${parseFloat(amount).toLocaleString()} ريال.`);
           setTimeout(() => window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank"), 500);
         }
@@ -759,8 +761,8 @@ export default function TransactionsView() {
                   setEditConfigAcct(rentAccountCode);
                   setEditConfigType(currentRentConfig?.periodType || "ربع سنوي");
                   setEditConfigAmount(currentRentConfig?.amountPerPeriod || "");
-                  setEditConfigLessorName(currentRentConfig?.lessorName || "");
-                  setEditConfigLessorPhone(currentRentConfig?.lessorPhone || "");
+                  setEditConfigLessorName(rentAcct?.lessorName || currentRentConfig?.lessorName || "");
+                  setEditConfigLessorPhone(rentAcct?.lessorPhone || currentRentConfig?.lessorPhone || "");
                   setShowRentConfig(true);
                 }}>⚙️ {currentRentConfig ? "تعديل الإعدادات" : "إعدادات"}</button>
                 {currentRentConfig && (
@@ -816,10 +818,24 @@ export default function TransactionsView() {
                     </div>
                     <div className="tx-modal-footer">
                       <button type="button" className="btn btn-secondary" onClick={() => setShowRentConfig(false)}>إلغاء</button>
-                      <button type="button" className="btn btn-primary" onClick={() => {
+                      <button type="button" className="btn btn-primary" onClick={async () => {
                         const cfg = { ...rentConfigs };
-                        cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0, lessorName: editConfigLessorName, lessorPhone: editConfigLessorPhone };
+                        cfg[editConfigAcct] = { periodType: editConfigType, amountPerPeriod: parseFloat(editConfigAmount) || 0 };
                         saveRentConfigs(cfg);
+                        // Save lessor info to Google Sheets
+                        try {
+                          const tk = localStorage.getItem("token");
+                          await fetch("/api/finance/accounts", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+                            body: JSON.stringify({
+                              originalCode: editConfigAcct,
+                              lessorName: editConfigLessorName,
+                              lessorPhone: editConfigLessorPhone,
+                            }),
+                          });
+                          await fetchAccounts();
+                        } catch {}
                         if (editConfigAcct === rentAccountCode) {
                           fetchRentEntries();
                         }
@@ -1057,8 +1073,8 @@ export default function TransactionsView() {
                             totals: { expense: formatCurrency(rentEntries.reduce((s, e) => s + (e.amount || 0), 0)) },
                           });
                         }}>🖨️ طباعة الكشف السنوي</button>
-                        {currentRentConfig?.lessorPhone && (
-                          <a href={`https://wa.me/${currentRentConfig.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(`السلام عليكم، كشف إيجار ${acctName(rentAccountCode)} لفترات ${rentYear}`)}`}
+                        {(rentAcct?.lessorPhone || currentRentConfig?.lessorPhone) && (
+                          <a href={`https://wa.me/${(rentAcct?.lessorPhone || currentRentConfig?.lessorPhone || "").replace(/^0+/, "966")}?text=${encodeURIComponent(`السلام عليكم، كشف إيجار ${acctName(rentAccountCode)} لفترات ${rentYear}`)}`}
                             target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: "none" }}>
                             📱 إرسال كشف للمؤجر
                           </a>

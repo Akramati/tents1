@@ -391,7 +391,7 @@ export async function deleteFinanceEntry(journalId) {
 
 // ===== Chart of Accounts (دليل الحسابات) =====
 export async function getChartOfAccounts(includeInactive = false) {
-  const rows = await getSheetData("Chart_Of_Accounts", "A2:G");
+  const rows = await getSheetData("Chart_Of_Accounts", "A2:I");
   return rows
     .filter((r) => r[0])
     .filter((r) => includeInactive || r[5] !== "FALSE")
@@ -403,6 +403,8 @@ export async function getChartOfAccounts(includeInactive = false) {
       linkedBookingType: r[4] || "",
       isActive: r[5] !== "FALSE",
       costCenterCode: r[6] || "",
+      lessorName: r[7] || "",
+      lessorPhone: r[8] || "",
     }));
 }
 
@@ -411,7 +413,7 @@ export async function addAccount(acct) {
   if (rows.slice(1).some((r) => r[0] === acct.accountCode)) {
     return { error: "كود الحساب موجود" };
   }
-    await appendRow("Chart_Of_Accounts", "A1:G1", [
+    await appendRow("Chart_Of_Accounts", "A1:I1", [
     acct.accountCode,
     acct.accountName,
     acct.accountType || "expense",
@@ -419,6 +421,8 @@ export async function addAccount(acct) {
     acct.linkedBookingType || "",
     "TRUE",
     acct.costCenterCode || "",
+    acct.lessorName || "",
+    acct.lessorPhone || "",
   ]);
   return { success: true };
 }
