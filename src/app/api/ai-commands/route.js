@@ -94,7 +94,7 @@ export async function POST(request) {
     const auth = requireAuth(request);
     if (auth.error) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
 
-    const { command, bookingId, customerName, amount, date, notes, cashAccountCode } = await request.json();
+    const { command, bookingId, customerName, amount, date, notes, cashAccountCode, bookingType, supplierName } = await request.json();
 
     if (!command) {
       return NextResponse.json({ success: false, error: "الحقل command مطلوب" }, { status: 400 });
@@ -159,6 +159,50 @@ export async function POST(request) {
         });
 
         return NextResponse.json({ success: true, message: `تم إضافة دفعة بقيمة ${amt.toLocaleString()} ريال للحجز ${targetBookingId}` });
+      }
+
+      case "check_availability": {
+        if (!date) {
+          return NextResponse.json({ success: false, error: "التاريخ مطلوب لفحص الإتاحة" }, { status: 400 });
+        }
+        const bookRes = await sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: "Bookings!A:O",
+        });
+        const allRows = (bookRes.data.values || []).slice(1).filter(r => r[0]);
+        const conflicting = allRows.filter(r => {
+          const s = r[4] || "", e = r[5] || "", st = (r[9] || "").trim();
+          if (st === "ملغي") return false;
+          if (bookingType && (r[10] || "").trim() !== bookingType.trim()) return false;
+          if (date >= s && date <= e) return true;
+          if (date <= e && date >= s) return true;
+          return false;
+        });
+        if (conflicting.length === 0) {
+          return NextResponse.json({ success: true, message: `✅ التاريخ ${date} متاح${bookingType ? ` لنوع "${bookingType}"` : ""}` });
+        }
+        const details = conflicting.map(r => `${r[1] || "عميل"} (${r[4]} - ${r[5]})`).join("، ");
+        return NextResponse.json({ success: true, message: `⚠️ التاريخ ${date} غير متاح بالكامل. توجد حجوزات: ${details}` });
+      }
+
+      case "get_supplier_balance": {
+        if (!supplierName) {
+          return NextResponse.json({ success: false, error: "اسم المورد مطلوب" }, { status: 400 });
+        }
+        const supRes = await sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: "Suppliers!A:G",
+        });
+        const supRows = (supRes.data.values || []).slice(1).filter(r => r[0]);
+        const q = supplierName.toLowerCase();
+        const matched = supRows.find(r => (r[1] || "").toLowerCase().includes(q));
+        if (!matched) {
+          return NextResponse.json({ success: false, error: `المورد "${supplierName}" غير موجود` });
+        }
+        return NextResponse.json({
+          success: true,
+          message: `المورد: ${matched[1]}\nرقم الجوال: ${matched[2] || "غير مسجل"}\nالرصيد المستحق: ${parseFloat(matched[4] || 0).toLocaleString()} ريال`,
+        });
       }
 
       default:
