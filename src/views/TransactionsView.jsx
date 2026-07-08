@@ -1483,7 +1483,7 @@ export default function TransactionsView() {
                 </tr>
               </thead>
               <tbody>
-                {[...recentEntries].reverse().map((e, i) => (
+                {recentEntries.map((e, i) => (
                   <tr key={e.journalId || i}>
                     <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center" }}>{e.date || "—"}</td>
                     <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.accountCode)} ({e.accountCode})</td>

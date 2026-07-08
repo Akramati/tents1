@@ -40,8 +40,9 @@ export async function GET(request) {
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
     const accountCode = searchParams.get("accountCode") || "";
+    const limit = parseInt(searchParams.get("limit") || "0", 10);
     const [entries, cumulativeBalances] = await Promise.all([
-      getFinanceLedger(from, to, accountCode),
+      getFinanceLedger(from, to, accountCode, limit),
       getCumulativeCashBalances(),
     ]);
     return NextResponse.json({ success: true, entries, cumulativeBalances });

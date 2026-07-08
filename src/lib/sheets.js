@@ -262,9 +262,9 @@ export async function addGeneralExpense(expense) {
 }
 
 // ===== Finance Ledger (دفتر اليومية) =====
-export async function getFinanceLedger(fromDate, toDate, accountCode) {
+export async function getFinanceLedger(fromDate, toDate, accountCode, limit) {
   const rows = await getSheetData("Finance_Ledger", "A2:M");
-  return rows
+  let filtered = rows
     .filter((row) => {
       if (!row[0]) return false;
       const d = row[1] || "";
@@ -288,6 +288,14 @@ export async function getFinanceLedger(fromDate, toDate, accountCode) {
       cashAccountCode: row[11] || "",
       branch: row[12] || "",
     }));
+  // Sort by date descending (newest first), then by createdAt descending for same-day entries
+  filtered.sort((a, b) => {
+    if (a.date > b.date) return -1;
+    if (a.date < b.date) return 1;
+    return (b.createdAt || "").localeCompare(a.createdAt || "");
+  });
+  if (limit > 0) filtered = filtered.slice(0, limit);
+  return filtered;
 }
 
 export async function getFinanceEntryByJournalId(journalId) {
