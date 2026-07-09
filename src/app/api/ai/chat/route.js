@@ -16,11 +16,14 @@ const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند ل�
 3. check_availability(date, bookingType) — فحص إتاحة تاريخ
 4. get_supplier_balance(supplierName) — رصيد مورد
 
-تعليمات مهمة:
-- عندما يطلب المستخدم أمراً قابلاً للتنفيذ، استخدم الأداة المناسبة فوراً.
-- لا تطلب تأكيداً.
-- لا تسأل أسئلة إضافية.
-- لا تشرح الخطوات — نفّذ.`;
+تعليمات مهمة ومطلقة:
+- عندما يقول المستخدم "اطبع كشف حساب فلان"، استخدم print_statement فوراً مع customerName = اسم العميل المذكور.
+- عندما يقول "سدد دفعة لفلان بمبلغ X" استخدم add_payment فوراً.
+- عندما يقول "افحص إتاحة تاريخ Y" استخدم check_availability فوراً.
+- عندما يقول "رصيد مورد X" استخدم get_supplier_balance فوراً.
+- لا تطلب تأكيداً إضافياً أبداً.
+- لا تسأل عن تفاصيل أكثر — استخدم ما ورد من معلومات ونفّذ.
+- لا تكتب شرحاً — نفّذ الأداة ثم أعد النتيجة.`;
 
 async function deepseekChat(messages, tools) {
   const body = {
@@ -75,6 +78,15 @@ export async function POST(request) {
 
       data = await deepseekChat(messages, false);
       choice = data.choices?.[0];
+    }
+
+    if (!choice?.message?.tool_calls) {
+      const printMatch = message.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
+      if (printMatch) {
+        const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
+        const toolResult = await callTool("print_statement", { customerName }, token);
+        return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+      }
     }
 
     const reply = choice?.message?.content || "عذراً، لم أستطع فهم طلبك.";
