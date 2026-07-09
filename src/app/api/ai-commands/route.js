@@ -24,8 +24,12 @@ async function fetchBookings(query) {
   return rows
     .filter(r => {
       if (!query) return true;
-      const q = query.toLowerCase();
-      return (r[1] || "").toLowerCase().includes(q) || (r[2] || "").includes(q) || (r[3] || "").toLowerCase().includes(q);
+      const q = query.toLowerCase().replace(/\s+/g, " ").trim();
+      const name = (r[1] || "").toLowerCase().replace(/\s+/g, " ").trim();
+      const nameParts = name.split(" ");
+      const qParts = q.split(" ");
+      const matchAllParts = qParts.every(p => nameParts.some(np => np.includes(p) || p.includes(np)));
+      return name.includes(q) || matchAllParts || (r[2] || "").includes(q) || (r[3] || "").toLowerCase().includes(q);
     })
     .map(r => ({
       bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "",
@@ -108,8 +112,14 @@ export async function POST(request) {
         }
         let targetBookingId = bookingId;
         if (!targetBookingId && customerName) {
+          console.log("Searching for customerName:", customerName);
           const bookings = await fetchBookings(customerName);
-          if (bookings.length === 0) return NextResponse.json({ success: false, error: "لا توجد حجوزات لهذا العميل" }, { status: 404 });
+          console.log("Found bookings:", bookings.length);
+          if (bookings.length === 0) {
+            const all = await fetchBookings("");
+            console.log("All booking names:", all.map(b => b.customerName).slice(0, 10));
+            return NextResponse.json({ success: false, error: "لا توجد حجوزات لهذا العميل" }, { status: 404 });
+          }
           targetBookingId = bookings[0].bookingId;
         }
 
