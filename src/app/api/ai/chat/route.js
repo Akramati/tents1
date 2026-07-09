@@ -5,8 +5,10 @@ import TOOLS, { callTool } from "@/lib/gemini";
 const API_BASE = "https://openrouter.ai/api/v1";
 const API_MODEL = "deepseek/deepseek-chat-v3-0324";
 
+const TODAY = new Date().toISOString().slice(0, 10);
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
+تاريخ اليوم هو ${TODAY}.
 لديك صلاحية تنفيذ الأوامر التالية عبر الأدوات المتاحة لك:
 - طباعة كشوفات حسابات العملاء
 - تسديد دفعات للعملاء
