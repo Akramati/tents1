@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { verifyToken } from "@/lib/auth";
 import TOOLS, { callTool } from "@/lib/gemini";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const DEEPSEEK_BASE = "https://api.deepseek.com/v1";
 
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
@@ -15,50 +14,62 @@ const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند ل�
 
 نفّذ الأمر مباشرة عند طلب المستخدم ولا تطلب تأكيداً إضافياً.`;
 
+async function deepseekChat(messages, tools) {
+  const body = {
+    model: "deepseek-chat",
+    messages,
+    tools: tools ? TOOLS.map(t => ({
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: { type: "object", properties: t.parameters.properties, required: t.parameters.required } },
+    })) : undefined,
+  };
+  const r = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const errText = await r.text();
+    throw new Error(`DeepSeek API error ${r.status}: ${errText}`);
+  }
+  return r.json();
+}
+
 export async function POST(request) {
   try {
     const { message, token } = await request.json();
-    if (!message) {
-      return NextResponse.json({ success: false, error: "الرسالة مطلوبة" }, { status: 400 });
-    }
-    if (!token) {
-      return NextResponse.json({ success: false, error: "التوكن مطلوب" }, { status: 401 });
-    }
+    if (!message) return NextResponse.json({ success: false, error: "الرسالة مطلوبة" }, { status: 400 });
+    if (!token) return NextResponse.json({ success: false, error: "التوكن مطلوب" }, { status: 401 });
 
     const payload = verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ success: false, error: "توكن غير صالح أو منتهي" }, { status: 401 });
+    if (!payload) return NextResponse.json({ success: false, error: "توكن غير صالح أو منتهي" }, { status: 401 });
+
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح DeepSeek API" }, { status: 500 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح Gemini API" }, { status: 500 });
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: message },
+    ];
+
+    let data = await deepseekChat(messages, true);
+    let choice = data.choices?.[0];
+
+    if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls) {
+      const call = choice.message.tool_calls[0];
+      const funcName = call.function.name;
+      const funcArgs = JSON.parse(call.function.arguments);
+      const toolResult = await callTool(funcName, funcArgs, token);
+
+      messages.push(choice.message);
+      messages.push({ role: "tool", tool_call_id: call.id, content: toolResult });
+
+      data = await deepseekChat(messages, false);
+      choice = data.choices?.[0];
     }
 
-    const generativeModel = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      tools: TOOLS.map(t => ({
-        functionDeclarations: [{
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-        }],
-      })),
-    });
-
-    const chat = generativeModel.startChat({ history: [], systemInstruction: { role: "system", parts: [{ text: SYSTEM_PROMPT }] } });
-
-    let result = await chat.sendMessage(message);
-    let response = result.response;
-
-    const calls = response.functionCalls();
-    if (calls && calls.length > 0) {
-      const call = calls[0];
-      const toolResult = await callTool(call.name, call.args, token);
-      const result2 = await chat.sendMessage([{ text: `نتيجة تنفيذ الأمر: ${toolResult}` }]);
-      response = result2.response;
-    }
-
-    const reply = response.text();
+    const reply = choice?.message?.content || "عذراً، لم أستطع فهم طلبك.";
     return NextResponse.json({ success: true, reply, role: payload.role });
 
   } catch (error) {
