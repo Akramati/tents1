@@ -3,6 +3,8 @@ import { verifyToken } from "@/lib/auth";
 import TOOLS, { callTool } from "@/lib/gemini";
 
 const GEMINI_MODEL = "gemini-2.0-flash";
+const OR_BASE = "https://openrouter.ai/api/v1";
+const OR_MODEL = "deepseek/deepseek-chat-v3-0324";
 
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
@@ -45,7 +47,6 @@ function convertHistoryToGemini(history) {
 }
 
 async function geminiChat(messages, tools, apiKey) {
-  // Build the Gemini API request
   const TODAY = new Date().toLocaleDateString("en-CA");
   const systemInstruction = {
     parts: [{ text: SYSTEM_PROMPT + `\nتاريخ اليوم هو ${TODAY}.` }],
@@ -71,11 +72,39 @@ async function geminiChat(messages, tools, apiKey) {
     body: JSON.stringify(body),
   });
 
+  if (r.status === 429) return { _quotaExceeded: true };
+
   if (!r.ok) {
     const errText = await r.text();
     throw new Error(`Gemini API error ${r.status}: ${errText}`);
   }
 
+  return r.json();
+}
+
+async function openRouterChat(messages, tools) {
+  const TODAY = new Date().toLocaleDateString("en-CA");
+  const orMessages = [
+    { role: "system", content: SYSTEM_PROMPT + `\nتاريخ اليوم هو ${TODAY}.` },
+    ...messages,
+  ];
+  const body = {
+    model: OR_MODEL,
+    messages: orMessages,
+    tools: tools ? TOOLS.map(t => ({
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: { type: "object", properties: t.parameters.properties, required: t.parameters.required } },
+    })) : undefined,
+  };
+  const r = await fetch(`${OR_BASE}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const errText = await r.text();
+    throw new Error(`OpenRouter API error ${r.status}: ${errText}`);
+  }
   return r.json();
 }
 
@@ -103,6 +132,33 @@ function extractText(response) {
   return null;
 }
 
+function extractORFunctionCall(response) {
+  const choice = response.choices?.[0];
+  if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls) {
+    const call = choice.message.tool_calls[0];
+    return { name: call.function.name, args: JSON.parse(call.function.arguments) };
+  }
+  return null;
+}
+
+function extractORText(response) {
+  return response.choices?.[0]?.message?.content || null;
+}
+
+async function callAI(messages, tools, useGemini) {
+  if (useGemini) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    const result = await geminiChat(messages, tools, apiKey);
+    if (result._quotaExceeded) return null;
+    return { provider: "gemini", data: result };
+  }
+  const orKey = process.env.OPENROUTER_API_KEY;
+  if (!orKey) return null;
+  const result = await openRouterChat(messages, tools);
+  return { provider: "openrouter", data: result };
+}
+
 export async function POST(request) {
   try {
     const { message, token, history = [] } = await request.json();
@@ -112,41 +168,42 @@ export async function POST(request) {
     const payload = verifyToken(token);
     if (!payload) return NextResponse.json({ success: false, error: "توكن غير صالح أو منتهي" }, { status: 401 });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح Gemini API" }, { status: 500 });
-    }
-
-    // Build conversation with history (last 10 messages max)
     const recentHistory = history.slice(-10);
     const messages = [
       ...recentHistory,
       { role: "user", content: message },
     ];
 
-    // First call: let Gemini decide whether to call a tool
-    let data = await geminiChat(messages, true, apiKey);
-    const functionCall = extractFunctionCall(data);
+    // Try Gemini first, fallback to OpenRouter
+    let result = await callAI(messages, true, true);
+    if (!result) result = await callAI(messages, true, false);
+    if (!result) return NextResponse.json({ success: false, error: "جميع خدمات الذكاء الاصطناعي غير متاحة حالياً — جرب لاحقاً" }, { status: 503 });
+
+    let functionCall = result.provider === "gemini"
+      ? extractFunctionCall(result.data)
+      : extractORFunctionCall(result.data);
 
     if (functionCall) {
-      // Execute the tool
       const funcName = functionCall.name;
       const funcArgs = functionCall.args || {};
       const toolResult = await callTool(funcName, funcArgs, token);
 
-      // Send the tool result back to Gemini for a human-friendly response
       const messagesWithTool = [
         ...messages,
         { role: "assistant", content: `[استدعاء أداة: ${funcName}]` },
         { role: "user", content: `نتيجة الأداة ${funcName}: ${toolResult}` },
       ];
 
-      data = await geminiChat(messagesWithTool, false, apiKey);
-      const reply = extractText(data) || toolResult;
+      let result2 = await callAI(messagesWithTool, false, true);
+      if (!result2) result2 = await callAI(messagesWithTool, false, false);
+
+      const reply = result2
+        ? (result2.provider === "gemini" ? extractText(result2.data) : extractORText(result2.data)) || toolResult
+        : toolResult;
       return NextResponse.json({ success: true, reply, role: payload.role });
     }
 
-    // No tool call — check for direct print pattern as fallback
+    // Fallback: direct print pattern
     const printMatch = message.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
     if (printMatch) {
       const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
@@ -154,8 +211,9 @@ export async function POST(request) {
       return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
     }
 
-    const reply = extractText(data) || "عذراً، لم أستطع فهم طلبك. حاول مرة أخرى.";
-    return NextResponse.json({ success: true, reply, role: payload.role });
+    const provider = result.provider;
+    const reply = provider === "gemini" ? extractText(result.data) : extractORText(result.data);
+    return NextResponse.json({ success: true, reply: reply || "عذراً، لم أستطع فهم طلبك.", role: payload.role });
 
   } catch (error) {
     console.error("POST /api/ai/chat error:", error);
