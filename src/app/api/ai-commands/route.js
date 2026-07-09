@@ -24,11 +24,14 @@ async function fetchBookings(query) {
   if (!query) return rows.map(r => ({ bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "", customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "", totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0), remainingAmount: parseFloat(r[8] || 0), status: r[9] || "", bookingType: r[10] || "", notes: r[11] || "" }));
   const q = query.toLowerCase().replace(/\s+/g, " ").trim();
   const qWords = q.split(" ").filter(Boolean);
-  return rows.filter(r => {
+  const mapped = rows.map(r => {
     const name = (r[1] || "").toLowerCase().replace(/\s+/g, " ").trim();
-    if (name.includes(q)) return true;
-    return qWords.some(w => name.includes(w));
-  }).map(r => ({ bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "", customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "", totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0), remainingAmount: parseFloat(r[8] || 0), status: r[9] || "", bookingType: r[10] || "", notes: r[11] || "" }));
+    const exact = name === q;
+    const partial = name.includes(q);
+    const wordMatches = qWords.filter(w => name.includes(w)).length;
+    return { score: exact ? 999 : partial ? 500 + wordMatches : wordMatches, bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "", customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "", totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0), remainingAmount: parseFloat(r[8] || 0), status: r[9] || "", bookingType: r[10] || "", notes: r[11] || "", };
+  });
+  return mapped.filter(b => b.score > 0).sort((a, b) => b.score - a.score);
 }
 
 async function generateStatementPdf(bookingId) {
