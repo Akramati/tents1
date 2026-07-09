@@ -3,7 +3,7 @@ import { verifyToken } from "@/lib/auth";
 import TOOLS, { callTool } from "@/lib/gemini";
 
 const API_BASE = "https://openrouter.ai/api/v1";
-const API_MODEL = "deepseek/deepseek-chat-v3-0324:free";
+const API_MODEL = "deepseek/deepseek-chat-v3-0324";
 
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
