@@ -2,13 +2,10 @@ import { NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 import TOOLS, { callTool } from "@/lib/gemini";
 
-const API_BASE = "https://openrouter.ai/api/v1";
-const API_MODEL = "deepseek/deepseek-chat-v3-0324";
+const GEMINI_MODEL = "gemini-2.0-flash";
 
-const TODAY = new Date().toISOString().slice(0, 10);
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
-تاريخ اليوم هو ${TODAY}.
 
 لديك الأدوات التالية ويجب استخدامها حصراً لتنفيذ طلبات المستخدم:
 1. print_statement(customerName, bookingId) — طباعة كشف حساب عميل
@@ -23,77 +20,148 @@ const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند ل�
 - عندما يقول "رصيد مورد X" استخدم get_supplier_balance فوراً.
 - لا تطلب تأكيداً إضافياً أبداً.
 - لا تسأل عن تفاصيل أكثر — استخدم ما ورد من معلومات ونفّذ.
-- لا تكتب شرحاً — نفّذ الأداة ثم أعد النتيجة.`;
+- لا تكتب شرحاً — نفّذ الأداة ثم أعد النتيجة.
+- أجب بإيجاز ووضوح.`;
 
-async function deepseekChat(messages, tools) {
-  const body = {
-    model: API_MODEL,
-    messages,
-    tools: tools ? TOOLS.map(t => ({
-      type: "function",
-      function: { name: t.name, description: t.description, parameters: { type: "object", properties: t.parameters.properties, required: t.parameters.required } },
-    })) : undefined,
+function buildGeminiTools() {
+  return [{
+    functionDeclarations: TOOLS.map(t => ({
+      name: t.name,
+      description: t.description,
+      parameters: {
+        type: "OBJECT",
+        properties: t.parameters.properties,
+        required: t.parameters.required,
+      },
+    })),
+  }];
+}
+
+function convertHistoryToGemini(history) {
+  return history.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+}
+
+async function geminiChat(messages, tools, apiKey) {
+  // Build the Gemini API request
+  const TODAY = new Date().toLocaleDateString("en-CA");
+  const systemInstruction = {
+    parts: [{ text: SYSTEM_PROMPT + `\nتاريخ اليوم هو ${TODAY}.` }],
   };
-  const r = await fetch(`${API_BASE}/chat/completions`, {
+
+  const contents = convertHistoryToGemini(messages);
+
+  const body = {
+    system_instruction: systemInstruction,
+    contents,
+    tools: tools ? buildGeminiTools() : undefined,
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 1024,
+    },
+  };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
   if (!r.ok) {
     const errText = await r.text();
-    throw new Error(`DeepSeek API error ${r.status}: ${errText}`);
+    throw new Error(`Gemini API error ${r.status}: ${errText}`);
   }
+
   return r.json();
+}
+
+function extractFunctionCall(response) {
+  const candidate = response.candidates?.[0];
+  if (!candidate?.content?.parts) return null;
+
+  for (const part of candidate.content.parts) {
+    if (part.functionCall) {
+      return part.functionCall;
+    }
+  }
+  return null;
+}
+
+function extractText(response) {
+  const candidate = response.candidates?.[0];
+  if (!candidate?.content?.parts) return null;
+
+  for (const part of candidate.content.parts) {
+    if (part.text) {
+      return part.text;
+    }
+  }
+  return null;
 }
 
 export async function POST(request) {
   try {
-    const { message, token } = await request.json();
+    const { message, token, history = [] } = await request.json();
     if (!message) return NextResponse.json({ success: false, error: "الرسالة مطلوبة" }, { status: 400 });
     if (!token) return NextResponse.json({ success: false, error: "التوكن مطلوب" }, { status: 401 });
 
     const payload = verifyToken(token);
     if (!payload) return NextResponse.json({ success: false, error: "توكن غير صالح أو منتهي" }, { status: 401 });
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح OpenRouter API" }, { status: 500 });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح Gemini API" }, { status: 500 });
     }
 
+    // Build conversation with history (last 10 messages max)
+    const recentHistory = history.slice(-10);
     const messages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      ...recentHistory,
       { role: "user", content: message },
     ];
 
-    let data = await deepseekChat(messages, true);
-    let choice = data.choices?.[0];
+    // First call: let Gemini decide whether to call a tool
+    let data = await geminiChat(messages, true, apiKey);
+    const functionCall = extractFunctionCall(data);
 
-    if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls) {
-      const call = choice.message.tool_calls[0];
-      const funcName = call.function.name;
-      const funcArgs = JSON.parse(call.function.arguments);
+    if (functionCall) {
+      // Execute the tool
+      const funcName = functionCall.name;
+      const funcArgs = functionCall.args || {};
       const toolResult = await callTool(funcName, funcArgs, token);
 
-      messages.push(choice.message);
-      messages.push({ role: "tool", tool_call_id: call.id, content: toolResult });
+      // Send the tool result back to Gemini for a human-friendly response
+      const messagesWithTool = [
+        ...messages,
+        { role: "assistant", content: `[استدعاء أداة: ${funcName}]` },
+        { role: "user", content: `نتيجة الأداة ${funcName}: ${toolResult}` },
+      ];
 
-      data = await deepseekChat(messages, false);
-      choice = data.choices?.[0];
+      data = await geminiChat(messagesWithTool, false, apiKey);
+      const reply = extractText(data) || toolResult;
+      return NextResponse.json({ success: true, reply, role: payload.role });
     }
 
-    if (!choice?.message?.tool_calls) {
-      const printMatch = message.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
-      if (printMatch) {
-        const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
-        const toolResult = await callTool("print_statement", { customerName }, token);
-        return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
-      }
+    // No tool call — check for direct print pattern as fallback
+    const printMatch = message.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
+    if (printMatch) {
+      const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
+      const toolResult = await callTool("print_statement", { customerName }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
     }
 
-    const reply = choice?.message?.content || "عذراً، لم أستطع فهم طلبك.";
+    const reply = extractText(data) || "عذراً، لم أستطع فهم طلبك. حاول مرة أخرى.";
     return NextResponse.json({ success: true, reply, role: payload.role });
 
   } catch (error) {
     console.error("POST /api/ai/chat error:", error);
-    return NextResponse.json({ success: false, error: error.message || "خطأ في الاتصال" }, { status: 500 });
+    const userMessage = error.message?.includes("API error")
+      ? "خطأ في الاتصال بالذكاء الاصطناعي — يرجى المحاولة لاحقاً"
+      : error.message || "خطأ في الاتصال";
+    return NextResponse.json({ success: false, error: userMessage }, { status: 500 });
   }
 }

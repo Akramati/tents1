@@ -46,7 +46,11 @@ export default function GeminiChat({ onClose }) {
       const r = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, token }),
+        body: JSON.stringify({
+          message: msg,
+          token,
+          history: messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })),
+        }),
       });
       const d = await r.json();
       if (d.success) {
