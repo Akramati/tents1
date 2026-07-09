@@ -21,23 +21,14 @@ async function fetchBookings(query) {
     range: "Bookings!A:O",
   });
   const rows = (res.data.values || []).slice(1).filter(r => r[0]);
-  return rows
-    .filter(r => {
-      if (!query) return true;
-      const q = query.toLowerCase().replace(/\s+/g, " ").trim();
-      const name = (r[1] || "").toLowerCase().replace(/\s+/g, " ").trim();
-      const nameParts = name.split(" ");
-      const qParts = q.split(" ");
-      const matchAllParts = qParts.every(p => nameParts.some(np => np.includes(p) || p.includes(np)));
-      return name.includes(q) || matchAllParts || (r[2] || "").includes(q) || (r[3] || "").toLowerCase().includes(q);
-    })
-    .map(r => ({
-      bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "",
-      customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "",
-      totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0),
-      remainingAmount: parseFloat(r[8] || 0), status: r[9] || "",
-      bookingType: r[10] || "", notes: r[11] || "",
-    }));
+  if (!query) return rows.map(r => ({ bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "", customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "", totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0), remainingAmount: parseFloat(r[8] || 0), status: r[9] || "", bookingType: r[10] || "", notes: r[11] || "" }));
+  const q = query.toLowerCase().replace(/\s+/g, " ").trim();
+  const qWords = q.split(" ").filter(Boolean);
+  return rows.filter(r => {
+    const name = (r[1] || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (name.includes(q)) return true;
+    return qWords.some(w => name.includes(w));
+  }).map(r => ({ bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "", customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "", totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0), remainingAmount: parseFloat(r[8] || 0), status: r[9] || "", bookingType: r[10] || "", notes: r[11] || "" }));
 }
 
 async function generateStatementPdf(bookingId) {
@@ -112,14 +103,8 @@ export async function POST(request) {
         }
         let targetBookingId = bookingId;
         if (!targetBookingId && customerName) {
-          console.log("Searching for customerName:", customerName);
           const bookings = await fetchBookings(customerName);
-          console.log("Found bookings:", bookings.length);
-          if (bookings.length === 0) {
-            const all = await fetchBookings("");
-            console.log("All booking names:", all.map(b => b.customerName).slice(0, 10));
-            return NextResponse.json({ success: false, error: "لا توجد حجوزات لهذا العميل" }, { status: 404 });
-          }
+          if (bookings.length === 0) return NextResponse.json({ success: false, error: "لا توجد حجوزات لهذا العميل" }, { status: 404 });
           targetBookingId = bookings[0].bookingId;
         }
 
