@@ -35,7 +35,7 @@ export async function POST(request) {
     }
 
     const generativeModel = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
       tools: TOOLS.map(t => ({
         functionDeclarations: [{
           name: t.name,

@@ -32,7 +32,7 @@ const TOOLS = [
     parameters: {
       type: "OBJECT",
       properties: {
-        date: { type: "STRING", description: "التاريخ المطلوب بصيغة YYYY-MM-DD", required: true },
+        date: { type: "STRING", description: "التاريخ المطلوب بصيغة YYYY-MM-DD" },
         bookingType: { type: "STRING", description: "نوع الحجز: 'حجوزات الصالة هابي لاند' أو 'حجوزات الخيام' أو أي نوع آخر (اختياري)" },
       },
       required: ["date"],
