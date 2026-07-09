@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 import TOOLS, { callTool } from "@/lib/gemini";
 
-const DEEPSEEK_BASE = "https://api.deepseek.com/v1";
+const API_BASE = "https://openrouter.ai/api/v1";
+const API_MODEL = "deepseek/deepseek-chat-v3-0324:free";
 
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
@@ -16,16 +17,16 @@ const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند ل�
 
 async function deepseekChat(messages, tools) {
   const body = {
-    model: "deepseek-chat",
+    model: API_MODEL,
     messages,
     tools: tools ? TOOLS.map(t => ({
       type: "function",
       function: { name: t.name, description: t.description, parameters: { type: "object", properties: t.parameters.properties, required: t.parameters.required } },
     })) : undefined,
   };
-  const r = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
+  const r = await fetch(`${API_BASE}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
     body: JSON.stringify(body),
   });
   if (!r.ok) {
@@ -44,8 +45,8 @@ export async function POST(request) {
     const payload = verifyToken(token);
     if (!payload) return NextResponse.json({ success: false, error: "توكن غير صالح أو منتهي" }, { status: 401 });
 
-    if (!process.env.DEEPSEEK_API_KEY) {
-      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح DeepSeek API" }, { status: 500 });
+    if (!process.env.OPENROUTER_API_KEY) {
+      return NextResponse.json({ success: false, error: "لم يتم تعيين مفتاح OpenRouter API" }, { status: 500 });
     }
 
     const messages = [
