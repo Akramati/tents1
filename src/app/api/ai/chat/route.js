@@ -4,7 +4,7 @@ import TOOLS, { callTool } from "@/lib/gemini";
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 const OR_BASE = "https://openrouter.ai/api/v1";
-const OR_MODEL = "deepseek/deepseek-chat-v3-0324";
+const OR_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 const SYSTEM_PROMPT = `أنت مساعد ذكي لنظام هابي لاند لإدارة الحجوزات والمحاسبة.
 لغة التواصل هي العربية.
@@ -149,14 +149,22 @@ async function callAI(messages, tools, useGemini) {
   if (useGemini) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return null;
-    const result = await geminiChat(messages, tools, apiKey);
-    if (result._quotaExceeded) return null;
-    return { provider: "gemini", data: result };
+    try {
+      const result = await geminiChat(messages, tools, apiKey);
+      if (result._quotaExceeded) return null;
+      return { provider: "gemini", data: result };
+    } catch {
+      return null;
+    }
   }
   const orKey = process.env.OPENROUTER_API_KEY;
   if (!orKey) return null;
-  const result = await openRouterChat(messages, tools);
-  return { provider: "openrouter", data: result };
+  try {
+    const result = await openRouterChat(messages, false);
+    return { provider: "openrouter", data: result };
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(request) {
@@ -203,11 +211,34 @@ export async function POST(request) {
       return NextResponse.json({ success: true, reply, role: payload.role });
     }
 
-    // Fallback: direct print pattern
-    const printMatch = message.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
+    // Fallback: regex patterns for all commands
+    const msg = message.trim();
+    const printMatch = msg.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
     if (printMatch) {
       const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
       const toolResult = await callTool("print_statement", { customerName }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+
+    const payMatch = msg.match(/(?:سدد|تسديد|دفعة|ادفع)\s*(?:لـ|ل)?(.+?)\s*(?:مبلغ|قيمة|رسوم)?\s*(\d[\d,]*)/i);
+    if (payMatch) {
+      const customerName = payMatch[1].trim();
+      const amount = parseFloat(payMatch[2].replace(/,/g, ""));
+      const toolResult = await callTool("add_payment", { customerName, amount }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+
+    const checkMatch = msg.match(/(?:فحص|افحص|تحقق|هل\s*متاح)\s*(?:إتاحة|تاريخ)?\s*(?:في\s*)?(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})/i);
+    if (checkMatch) {
+      const date = checkMatch[1].replace(/\//g, "-");
+      const toolResult = await callTool("check_availability", { date }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+
+    const balanceMatch = msg.match(/(?:رصيد|استعلام|عرض)\s*(?:مورد|المورد)\s*(.+)/i);
+    if (balanceMatch) {
+      const supplierName = balanceMatch[1].trim();
+      const toolResult = await callTool("get_supplier_balance", { supplierName }, token);
       return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
     }
 
