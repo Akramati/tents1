@@ -1,15 +1,32 @@
 import { sheets } from "@/lib/google";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+const CACHE_TTL = 30000; // 30 seconds
+const cache = new Map();
 
-// Generic helpers
+function getCached(key) {
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
+  cache.delete(key);
+  return null;
+}
+
+function setCache(key, data) {
+  cache.set(key, { data, ts: Date.now() });
+}
+
 export async function getSheetData(sheetName, range) {
+  const cacheKey = `${sheetName}!${range}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!${range}`,
+    range: cacheKey,
   });
   if (res.status !== 200) throw new Error(`Google Sheets read failed: status=${res.status}`);
-  return res.data.values || [];
+  const data = res.data.values || [];
+  setCache(cacheKey, data);
+  return data;
 }
 
 export async function appendRow(sheetName, range, values) {
