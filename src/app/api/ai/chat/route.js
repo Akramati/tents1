@@ -182,7 +182,35 @@ export async function POST(request) {
       { role: "user", content: message },
     ];
 
-    // Try Gemini first, fallback to OpenRouter
+    // Try regex patterns first (fast, no AI needed)
+    const msg = message.trim();
+    const printMatch = msg.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
+    if (printMatch) {
+      const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
+      const toolResult = await callTool("print_statement", { customerName }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+    const payMatch = msg.match(/(?:سدد|تسديد|دفعة|ادفع)\s*(?:لـ|ل)?(.+?)\s*(?:مبلغ|قيمة|رسوم)?\s*(\d[\d,]*)/i);
+    if (payMatch) {
+      const customerName = payMatch[1].trim();
+      const amount = parseFloat(payMatch[2].replace(/,/g, ""));
+      const toolResult = await callTool("add_payment", { customerName, amount }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+    const checkMatch = msg.match(/(?:فحص|افحص|تحقق|هل\s*متاح)\s*(?:إتاحة|تاريخ)?\s*(?:في\s*)?(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})/i);
+    if (checkMatch) {
+      const date = checkMatch[1].replace(/\//g, "-");
+      const toolResult = await callTool("check_availability", { date }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+    const balanceMatch = msg.match(/(?:رصيد|استعلام|عرض)\s*(?:مورد|المورد)\s*(.+)/i);
+    if (balanceMatch) {
+      const supplierName = balanceMatch[1].trim();
+      const toolResult = await callTool("get_supplier_balance", { supplierName }, token);
+      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
+    }
+
+    // Try AI (Gemini → OpenRouter fallback)
     let result = await callAI(messages, true, true);
     if (!result) result = await callAI(messages, true, false);
     if (!result) return NextResponse.json({ success: false, error: "جميع خدمات الذكاء الاصطناعي غير متاحة حالياً — جرب لاحقاً" }, { status: 503 });
@@ -209,37 +237,6 @@ export async function POST(request) {
         ? (result2.provider === "gemini" ? extractText(result2.data) : extractORText(result2.data)) || toolResult
         : toolResult;
       return NextResponse.json({ success: true, reply, role: payload.role });
-    }
-
-    // Fallback: regex patterns for all commands
-    const msg = message.trim();
-    const printMatch = msg.match(/(?:اطبع|طباعة)\s*(?:كشف\s*(?:حساب)?\s*)?(?:عميل\s*)?(.+)/i);
-    if (printMatch) {
-      const customerName = printMatch[1].replace(/^(كشف|حساب|عميل)\s*/i, "").trim();
-      const toolResult = await callTool("print_statement", { customerName }, token);
-      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
-    }
-
-    const payMatch = msg.match(/(?:سدد|تسديد|دفعة|ادفع)\s*(?:لـ|ل)?(.+?)\s*(?:مبلغ|قيمة|رسوم)?\s*(\d[\d,]*)/i);
-    if (payMatch) {
-      const customerName = payMatch[1].trim();
-      const amount = parseFloat(payMatch[2].replace(/,/g, ""));
-      const toolResult = await callTool("add_payment", { customerName, amount }, token);
-      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
-    }
-
-    const checkMatch = msg.match(/(?:فحص|افحص|تحقق|هل\s*متاح)\s*(?:إتاحة|تاريخ)?\s*(?:في\s*)?(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})/i);
-    if (checkMatch) {
-      const date = checkMatch[1].replace(/\//g, "-");
-      const toolResult = await callTool("check_availability", { date }, token);
-      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
-    }
-
-    const balanceMatch = msg.match(/(?:رصيد|استعلام|عرض)\s*(?:مورد|المورد)\s*(.+)/i);
-    if (balanceMatch) {
-      const supplierName = balanceMatch[1].trim();
-      const toolResult = await callTool("get_supplier_balance", { supplierName }, token);
-      return NextResponse.json({ success: true, reply: toolResult, role: payload.role });
     }
 
     const provider = result.provider;
