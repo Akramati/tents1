@@ -856,7 +856,7 @@ export default function CreateBookingView() {
     const transport = transResponsibility === "على الزبون" ? (parseFloat(transCost) || 0) : 0;
     const total = base + transport;
     setFormData((prev) => ({ ...prev, totalAmount: total > 0 ? total.toString() : "" }));
-  }, [formData.bookingType, pricingType, manualBasePrice, transResponsibility, transCost, rentedItems]);
+  }, [formData.bookingType, pricingType, manualBasePrice, transResponsibility, transCost, rentedItems, behavior]);
 
   useEffect(() => {
     if (!formData.startDate || !formData.endDate) {
