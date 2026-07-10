@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
 
+const CC = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
+
 const CATEGORIES = [
   { key: "expense", label: "🔴 صرف", desc: "دفع نقدي أو تسديد" },
   { key: "income", label: "🟢 تحصيل", desc: "قبض نقدي" },
@@ -312,7 +314,8 @@ export default function TransactionsView() {
     const phone = debtor.customerPhone;
     if (!phone) { setErrorMsg("لا يوجد رقم جوال للعميل"); return; }
     const msg = encodeURIComponent(composeMsg(debtor.customerName, debtor.totalRemaining));
-    const cleanPhone = phone.replace(/^0+/, "966");
+    const cc = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
+    const cleanPhone = phone.replace(/^0+/, cc);
     if (mode === "whatsapp") {
       window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
     } else {
@@ -328,7 +331,8 @@ export default function TransactionsView() {
       const d = list[i];
       const phone = d.customerPhone;
       const msg = encodeURIComponent(composeMsg(d.customerName, d.totalRemaining));
-      const cleanPhone = phone.replace(/^0+/, "966");
+      const cc = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
+    const cleanPhone = phone.replace(/^0+/, cc);
       if (mode === "whatsapp") {
         window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
       } else {
@@ -349,7 +353,8 @@ export default function TransactionsView() {
       const d = list[i];
       const phone = d.customerPhone;
       const msg = encodeURIComponent(composeMsg(d.customerName, d.totalRemaining));
-      const cleanPhone = phone.replace(/^0+/, "966");
+      const cc = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
+    const cleanPhone = phone.replace(/^0+/, cc);
       // Try WhatsApp first
       window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
       await new Promise(r => setTimeout(r, 300));
@@ -496,7 +501,8 @@ export default function TransactionsView() {
         setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
         if (opType === "rent" && (rentAcct?.lessorPhone || currentRentConfig?.lessorPhone)) {
           const phone = rentAcct?.lessorPhone || currentRentConfig?.lessorPhone || "";
-          const cleanPhone = phone.replace(/^0+/, "966");
+          const cc = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
+    const cleanPhone = phone.replace(/^0+/, cc);
           const msg = encodeURIComponent(`السلام عليكم، تم تسديد دفعة إيجار ${rentPeriodVal} لمبلغ ${parseFloat(amount).toLocaleString()} ريال.`);
           setTimeout(() => window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank"), 500);
         }
@@ -1058,7 +1064,7 @@ export default function TransactionsView() {
                           });
                         }}>🖨️ طباعة كشف الفترة</button>
                         {rentAcct?.lessorPhone && rentEntries.some(e => (e.notes || "").includes(rentPeriodVal)) && (
-                          <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(
+                          <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, CC)}?text=${encodeURIComponent(
 `السلام عليكم، كشف إيجار ${acctName(rentAccountCode)}
 ${rentYear} - ${rentPeriodVal}
 
@@ -1086,7 +1092,7 @@ ${rentEntries.filter(e => (e.notes || "").includes(rentPeriodVal)).map((e, i) =>
                           });
                         }}>🖨️ طباعة الكشف السنوي</button>
                         {rentAcct?.lessorPhone && rentEntries.length > 0 && (
-                          <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(
+                          <a href={`https://wa.me/${rentAcct.lessorPhone.replace(/^0+/, CC)}?text=${encodeURIComponent(
 `السلام عليكم، كشف إيجار ${acctName(rentAccountCode)} السنوي
 ${rentYear}
 
@@ -1387,7 +1393,7 @@ ${rentEntries.map((e, i) => {
                       <td className="tx-dr-actions" onClick={e => e.stopPropagation()}>
                         {d.customerPhone && (
                           <>
-                            <a href={`https://wa.me/${d.customerPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(composeMsg(d.customerName, d.totalRemaining))}`}
+                            <a href={`https://wa.me/${d.customerPhone.replace(/^0+/, CC)}?text=${encodeURIComponent(composeMsg(d.customerName, d.totalRemaining))}`}
                               target="_blank" rel="noopener noreferrer"
                               className="tx-debtor-wa" title="واتساب">📱</a>
                             <a href={`sms:${d.customerPhone}?body=${encodeURIComponent(composeMsg(d.customerName, d.totalRemaining))}`}
@@ -1407,7 +1413,7 @@ ${rentEntries.map((e, i) => {
                     <span>المتبقي: {formatCurrency(selectedDebtor.totalRemaining)}</span>
                     {selectedDebtor.customerPhone && (
                       <>
-                        <a href={`https://wa.me/${selectedDebtor.customerPhone.replace(/^0+/, "966")}?text=${encodeURIComponent(composeMsg(selectedDebtor.customerName, selectedDebtor.totalRemaining))}`}
+                        <a href={`https://wa.me/${selectedDebtor.customerPhone.replace(/^0+/, CC)}?text=${encodeURIComponent(composeMsg(selectedDebtor.customerName, selectedDebtor.totalRemaining))}`}
                           target="_blank" rel="noopener noreferrer" className="tx-debtor-wa">📱 واتساب</a>
                         <a href={`sms:${selectedDebtor.customerPhone}?body=${encodeURIComponent(composeMsg(selectedDebtor.customerName, selectedDebtor.totalRemaining))}`}
                           className="tx-debtor-wa">💬 SMS</a>
