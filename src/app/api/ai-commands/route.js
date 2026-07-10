@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { sheets } from "@/lib/google";
-import { getFinanceLedger, addFinanceEntry, getChartOfAccounts } from "@/lib/sheets";
+import { getFinanceLedger, addFinanceEntry, getChartOfAccounts, getSheetData } from "@/lib/sheets";
 import nodemailer from "nodemailer";
 import jsPDF from "jspdf";
 
@@ -16,11 +15,7 @@ const transporter = nodemailer.createTransport({
 });
 
 async function fetchBookings(query) {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: "Bookings!A:O",
-  });
-  const rows = (res.data.values || []).slice(1).filter(r => r[0]);
+  const rows = (await getSheetData("Bookings", "A:O")).slice(1).filter(r => r[0]);
   if (!query) return rows.map(r => ({ bookingId: r[0], customerName: r[1] || "", customerPhone: r[2] || "", customerAddress: r[3] || "", startDate: r[4] || "", endDate: r[5] || "", totalAmount: parseFloat(r[6] || 0), paidAmount: parseFloat(r[7] || 0), remainingAmount: parseFloat(r[8] || 0), status: r[9] || "", bookingType: r[10] || "", notes: r[11] || "" }));
   const q = query.toLowerCase().replace(/\s+/g, " ").trim();
   const qWords = q.split(" ").filter(Boolean);
@@ -165,11 +160,7 @@ export async function POST(request) {
         if (!date) {
           return NextResponse.json({ success: false, error: "التاريخ مطلوب لفحص الإتاحة" }, { status: 400 });
         }
-        const bookRes = await sheets.spreadsheets.values.get({
-          spreadsheetId: SPREADSHEET_ID,
-          range: "Bookings!A:O",
-        });
-        const allRows = (bookRes.data.values || []).slice(1).filter(r => r[0]);
+        const allRows = (await getSheetData("Bookings", "A:O")).slice(1).filter(r => r[0]);
         const conflicting = allRows.filter(r => {
           const s = r[4] || "", e = r[5] || "", st = (r[9] || "").trim();
           if (st === "ملغي") return false;
@@ -189,11 +180,7 @@ export async function POST(request) {
         if (!supplierName) {
           return NextResponse.json({ success: false, error: "اسم المورد مطلوب" }, { status: 400 });
         }
-        const supRes = await sheets.spreadsheets.values.get({
-          spreadsheetId: SPREADSHEET_ID,
-          range: "Suppliers!A:G",
-        });
-        const supRows = (supRes.data.values || []).slice(1).filter(r => r[0]);
+        const supRows = (await getSheetData("Suppliers", "A:G")).slice(1).filter(r => r[0]);
         const q = supplierName.toLowerCase();
         const matched = supRows.find(r => (r[1] || "").toLowerCase().includes(q));
         if (!matched) {
