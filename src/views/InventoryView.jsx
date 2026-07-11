@@ -16,12 +16,26 @@ export default function InventoryView() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+  const [costMap, setCostMap] = useState({});
+
   const fetchItems = async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/inventory");
       const data = await res.json();
-      if (data.success) setItems(data.items || []);
+      if (data.success) {
+        setItems(data.items || []);
+        const ids = (data.items || []).map((i) => i.itemId).filter(Boolean);
+        if (ids.length > 0) {
+          const costRes = await fetch(`/api/inventory/cost?itemIds=${ids.join(",")}`);
+          const costData = await costRes.json();
+          if (costData.success) {
+            const map = {};
+            costData.items.forEach((ci) => { map[ci.itemId] = ci; });
+            setCostMap(map);
+          }
+        }
+      }
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -179,6 +193,8 @@ export default function InventoryView() {
                     <th>الإجمالي</th>
                     <th>تحت الصيانة</th>
                     <th>المتاح</th>
+                    <th>تكلفة الوحدة</th>
+                    <th>إجمالي التكلفة</th>
                     <th>إجراءات</th>
                   </tr>
                 </thead>
@@ -195,6 +211,12 @@ export default function InventoryView() {
                         <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0)) < 5 ? "low" : "ok"}`}>
                           {item.totalQuantity - (item.underMaintenance || 0)}
                         </span>
+                      </td>
+                      <td className="cell-center">
+                        {costMap[item.itemId] ? `${costMap[item.itemId].unitCost.toLocaleString()} ﷼` : "—"}
+                      </td>
+                      <td className="cell-center">
+                        {costMap[item.itemId] ? `${costMap[item.itemId].totalCost.toLocaleString()} ﷼` : "—"}
                       </td>
                       <td className="actions-cell">
                         <div className="three-dots-wrapper">

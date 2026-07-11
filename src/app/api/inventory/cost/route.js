@@ -8,6 +8,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const itemId = searchParams.get("itemId");
+    const itemIds = searchParams.get("itemIds");
     const itemName = searchParams.get("itemName");
 
     const invRes = await sheets.spreadsheets.values.get({
@@ -19,6 +20,10 @@ export async function GET(request) {
       itemId: r[0], itemName: r[1] || "", totalQuantity: parseInt(r[2] || 0),
     }));
     if (itemId) targetItems = targetItems.filter((i) => i.itemId === itemId);
+    if (itemIds) {
+      const ids = itemIds.split(",").map((s) => s.trim()).filter(Boolean);
+      targetItems = targetItems.filter((i) => ids.includes(i.itemId));
+    }
     if (itemName) targetItems = targetItems.filter((i) => i.itemName.includes(itemName));
 
     // 1. Aggregate from Supplier_Purchases inventoryItems
