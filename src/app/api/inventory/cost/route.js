@@ -54,7 +54,16 @@ export async function GET(request) {
         try {
           const invItems = JSON.parse(r[10] || "[]");
           for (const inv of invItems) {
-            if (inv.itemId === item.itemId || inv.itemName === item.itemName) {
+            let matched = false;
+            if (inv.itemId === item.itemId) {
+              matched = true;
+            } else if (!inv.itemId && inv.itemName) {
+              const nameWords = inv.itemName.split(/[\s-]+/).filter(w => w.length > 2);
+              const stockWords = item.itemName.split(/[\s-]+/).filter(w => w.length > 2);
+              const common = nameWords.filter(w => stockWords.some(s => s.includes(w) || w.includes(s)));
+              if (common.length >= 1) matched = true;
+            }
+            if (!matched) continue;
               const amt = parseFloat(inv.amount) || 0;
               const qty = parseInt(inv.quantity) || 0;
               purchases.push({
@@ -68,7 +77,6 @@ export async function GET(request) {
               });
               purchaseTotal += amt;
               purchaseQty += qty;
-            }
           }
         } catch {}
       }
