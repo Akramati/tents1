@@ -116,6 +116,18 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
 
   const items = booking.rentedItems || [];
   const stage = booking.fieldStatus || "pending";
+
+  // Calculate if today is the last day or overdue for red/orange highlighting
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const endDate = booking.endDate ? new Date(booking.endDate + "T00:00:00") : null;
+  const diffDays = endDate ? Math.ceil((endDate - today) / (1000 * 60 * 60 * 24)) : null;
+  const isOverdue = stage === "installed" && diffDays !== null && diffDays <= 0;
+  const isNearEnd = stage === "installed" && diffDays !== null && diffDays === 1;
+  const cardAlertStyle = isOverdue
+    ? { background: "rgba(220,38,38,0.12)", borderColor: "rgba(220,38,38,0.5)" }
+    : isNearEnd
+    ? { background: "rgba(245,158,11,0.12)", borderColor: "rgba(245,158,11,0.5)" }
+    : {};
   const expenseAccounts = fieldAccounts?.[stage] || FALLBACK_EXPENSE_ACCOUNTS[stage] || [];
   const accounts = expenseAccounts;
   const customCode = CUSTOM_ACCOUNTS[stage];
@@ -163,7 +175,7 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
   };
 
   return (
-    <div className="field-card" draggable
+    <div className="field-card" draggable style={cardAlertStyle}
       onDragStart={(e) => {
         e.dataTransfer.setData("bookingId", booking.bookingId);
         e.dataTransfer.effectAllowed = "move";
@@ -183,7 +195,11 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
             <span className="extended-badge" style={{display:"inline-block",fontSize:"0.6rem",background:"#f59e0b",color:"#fff",padding:"0.1rem 0.35rem",borderRadius:"0.25rem",marginRight:"0.35rem",verticalAlign:"middle"}}>ممدد</span>
           )}
         </p>
-        <p className="card-date">📅 {booking.startDate} → {booking.endDate || "?"}</p>
+        <p className="card-date">
+          📅 {booking.startDate} → {booking.endDate || "?"}
+          {isOverdue && <span className="pkg-item-tag" style={{fontSize:"0.6rem",background:"rgba(220,38,38,0.2)",color:"#dc2626",marginRight:"0.3rem"}}>{diffDays === 0 ? "🔴 آخر يوم" : "🔴 فات موعد الفك"}</span>}
+          {isNearEnd && <span className="pkg-item-tag" style={{fontSize:"0.6rem",background:"rgba(245,158,11,0.2)",color:"#d97706",marginRight:"0.3rem"}}>⚠️ غداً آخر يوم</span>}
+        </p>
         {items.length > 0 && !editingItems && (
           <button className="card-toggle" onClick={() => setExpanded(!expanded)}>
             {expanded ? "▲ إخفاء المواد" : "▼ المواد المطلوبة"} ({items.length})

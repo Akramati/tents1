@@ -13,7 +13,7 @@ export async function GET(request) {
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Supplier_Purchases!A2:J",
+      range: "Supplier_Purchases!A2:K",
     });
     let rows = res.data.values || [];
     if (supplierId) rows = rows.filter((r) => r[1] === supplierId);
@@ -30,6 +30,7 @@ export async function GET(request) {
       notes: r[7] || "",
       status: r[8] || "open",
       imageUrl: r[9] || "",
+      inventoryItems: r[10] ? (() => { try { return JSON.parse(r[10]); } catch { return []; } })() : [],
     }));
 
     purchases.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -127,7 +128,7 @@ export async function POST(request) {
     if (auth.error) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
 
     const body = await request.json();
-    const { supplierId, date, description, totalAmount, notes, costCenter, imageUrl, accountCode, carryFrom } = body;
+    const { supplierId, date, description, totalAmount, notes, costCenter, imageUrl, accountCode, carryFrom, inventoryItems } = body;
 
     if (!supplierId || !description || !totalAmount || parseFloat(totalAmount) <= 0) {
       return NextResponse.json({ success: false, error: "المورد والوصف والمبلغ مطلوبون" }, { status: 400 });
@@ -197,13 +198,14 @@ export async function POST(request) {
     const carryNote = carriedNotes.length > 0 ? `[مرحل من: ${carriedNotes.join("، ")}]` : "";
     const fullNotes = [notes || "", carryNote].filter(Boolean).join(" ");
 
-    // Write to Supplier_Purchases (A:J)
+    const invItemsJson = (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0)
+      ? JSON.stringify(inventoryItems) : "";
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:J",
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:K",
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[newPurchId, supplierId, date || new Date().toLocaleDateString("en-CA"),
-          description, amt.toString(), "0", costCenter, fullNotes, "open", imageUrl || ""]],
+          description, amt.toString(), "0", costCenter, fullNotes, "open", imageUrl || "", invItemsJson]],
       },
     });
 
@@ -243,6 +245,29 @@ export async function POST(request) {
       notes: `توريد من مورد: ${supRows[supIdx][1] || supplierId} - ${description} (${newPurchId}) [${costCenter}]${carryNote ? ` ${carryNote}` : ""}`,
       costCenter,
     });
+
+    // Process inventory items: create new items in inventory (existing items are just linked for documentation)
+    if (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0) {
+      for (const item of inventoryItems) {
+        if (!item.itemName) continue;
+        const qty = parseInt(item.quantity) || 1;
+        if (!item.itemId) {
+          // Create new inventory item
+          const invRes = await sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A:A",
+          });
+          const invRows = invRes.data.values || [];
+          let maxInv = 0;
+          for (const r of invRows) { const n = parseInt(r[0]); if (n > maxInv) maxInv = n; }
+          await sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A:D",
+            valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
+            requestBody: { values: [[(maxInv + 1).toString(), item.itemName, qty.toString(), "0"]] },
+          });
+        }
+        // Existing items: linked for documentation only — quantity not updated here
+      }
+    }
 
     const msg = carriedTotal > 0
       ? `تم تسجيل توريد ${description} بقيمة ${amt} ريال وترحيل ${carriedTotal.toLocaleString()} ريال من الفواتير السابقة`

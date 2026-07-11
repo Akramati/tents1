@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sheets } from "@/lib/google";
-import { addFinanceEntry, getFinanceLedger } from "@/lib/sheets";
+import { addFinanceEntry, deleteFinanceEntry } from "@/lib/sheets";
 import { requireAuth, requireAdmin } from "@/lib/auth";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -9,7 +9,7 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 async function reversePayment(transId) {
   // Read transaction
   const transRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A2:H",
+    spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A2:I",
   });
   const transRows = transRes.data.values || [];
   const tIdx = transRows.findIndex((r) => r[0] === transId.toString());
@@ -21,6 +21,7 @@ async function reversePayment(transId) {
   const amt = parseFloat(tRow[4] || 0);
   const purchaseId = tRow[5] || "";
   const cashCode = tRow[7] || "1101";
+  const journalId = tRow[8] || "";
 
   // 1. Reverse supplier balance (+amount)
   const supRes = await sheets.spreadsheets.values.get({
@@ -45,26 +46,31 @@ async function reversePayment(transId) {
     });
     const pRows = pRes.data.values || [];
     const pIdx = pRows.findIndex((r) => r[0] === purchaseId);
-    if (pIdx > 0) {
-      const pRow = pIdx + 1;
-      const curPaid = parseFloat(pRows[pIdx][5] || 0);
-      const newPaid = Math.max(0, curPaid - amt);
-      const totalAmt = parseFloat(pRows[pIdx][4] || 0);
-      const newStatus = newPaid >= totalAmt ? "closed" : "open";
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID, range: `Supplier_Purchases!F${pRow}:I${pRow}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [[newPaid.toString(), pRows[pIdx][6] || "", pRows[pIdx][7] || "", newStatus]] },
-      });
+      if (pIdx >= 0) {
+        const pRow = pIdx + 1;
+        const curPaid = parseFloat(pRows[pIdx][5] || 0);
+        const newPaid = Math.max(0, curPaid - amt);
+        const totalAmt = parseFloat(pRows[pIdx][4] || 0);
+        const newStatus = newPaid >= totalAmt ? "closed" : "open";
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID, range: `Supplier_Purchases!F${pRow}:I${pRow}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [[newPaid.toString(), pRows[pIdx][6] || "", pRows[pIdx][7] || "", newStatus]] },
+        });
+      }
     }
-  }
 
-  // 3. Delete the transaction row
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID, range: `Supplier_Transactions!A${rowNum}:H${rowNum}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [["", "", "", "", "", "", "", ""]] },
-  });
+    // 3. Delete the old finance ledger entry if journalId exists
+    if (journalId) {
+      await deleteFinanceEntry(journalId);
+    }
+
+    // 4. Delete the transaction row
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID, range: `Supplier_Transactions!A${rowNum}:I${rowNum}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [["", "", "", "", "", "", "", "", ""]] },
+    });
 
   return { success: true, supplierId, amount: amt, purchaseId, cashAccountCode: cashCode };
 }
@@ -110,7 +116,7 @@ export async function POST(request) {
       });
       const pRows = pRes.data.values || [];
       const pIdx = pRows.findIndex((r) => r[0] === purchaseId);
-      if (pIdx > 0) {
+      if (pIdx >= 0) {
         const pRow = pIdx + 1;
         const currentPaid = parseFloat(pRows[pIdx][5] || 0);
         const totalAmt = parseFloat(pRows[pIdx][4] || 0);
@@ -137,7 +143,7 @@ export async function POST(request) {
       costCenter: effectiveCostCenter || "",
     });
 
-    // Record in Supplier_Transactions (8 cols A:H)
+    // Record in Supplier_Transactions (9 cols A:I)
     const transRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A:A",
     });
@@ -147,7 +153,7 @@ export async function POST(request) {
     const newTransId = maxTrans + 1;
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A:H",
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A:I",
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[newTransId.toString(), supplierId,
@@ -155,6 +161,7 @@ export async function POST(request) {
           "payment", amt.toString(), purchaseId || "",
           `تسديد${purchaseInfo ? ` (${purchaseInfo})` : ""}${notes ? ` - ${notes}` : ""}`,
           cashAccountCode || "1101",
+          (journalId || "").toString(),
         ]],
       },
     });
@@ -289,13 +296,14 @@ export async function PUT(request) {
     const newTransId = maxTrans + 1;
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A:H",
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A:I",
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[newTransId.toString(), newBody.supplierId,
           newBody.date, "payment", amt.toString(), newBody.purchaseId || "",
           `تسديد${purchaseInfo ? ` (${purchaseInfo})` : ""}${newBody.notes ? ` - ${newBody.notes}` : ""}`,
           newBody.cashAccountCode,
+          (journalId || "").toString(),
         ]],
       },
     });

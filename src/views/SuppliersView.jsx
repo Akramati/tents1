@@ -35,6 +35,8 @@ export default function SuppliersView() {
   const [expandedImage, setExpandedImage] = useState(null);
   const [openPurchases, setOpenPurchases] = useState([]);
   const [carryPurchases, setCarryPurchases] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [purchaseItems, setPurchaseItems] = useState([{ itemId: "", itemName: "", quantity: 1, amount: "" }]);
 
   // Customer receivables state
   const [activeTab, setActiveTab] = useState("suppliers");
@@ -66,6 +68,9 @@ export default function SuppliersView() {
   useEffect(() => {
     fetch("/api/finance/cost-centers").then(r => r.json()).then(d => { if (d.success) setCostCenters(d.centers); }).catch(() => {});
     fetch("/api/finance/accounts").then(r => r.json()).then(d => { if (d.success) setAccounts(d.accounts || []); }).catch(() => {});
+    fetch("/api/inventory").then(r => r.json()).then(d => {
+      if (d.success) setInventoryItems(d.items || []);
+    }).catch(() => {});
   }, []);
 
   const fetchSuppliers = async () => {
@@ -230,6 +235,12 @@ export default function SuppliersView() {
           imageUrl: imageUrl || undefined,
           accountCode: purchaseForm.accountCode || undefined,
           carryFrom: carryPurchases.length > 0 ? carryPurchases : undefined,
+          inventoryItems: purchaseItems.filter(i => i.itemName && i.amount).map(i => ({
+            itemId: i.itemId || undefined,
+            itemName: i.itemName,
+            quantity: parseInt(i.quantity) || 1,
+            amount: parseFloat(i.amount) || 0,
+          })),
         }),
       });
       const data = await res.json();
@@ -238,6 +249,7 @@ export default function SuppliersView() {
         setShowPurchaseForm(false);
         setPurchaseForm({ description: "", totalAmount: "", notes: "", date: "", costCenter: "", accountCode: "" });
         setPurchaseImage(null);
+        setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, amount: "" }]);
 
         // Send WhatsApp to supplier
         const supplier = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
@@ -458,6 +470,7 @@ export default function SuppliersView() {
               setShowPurchaseForm(true);
               setPurchaseForm({ description: "", totalAmount: "", notes: "", date: new Date().toLocaleDateString("en-CA"), costCenter: "", accountCode: "" });
               setCarryPurchases([]);
+              setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, amount: "" }]);
               fetch(`/api/finance/suppliers/purchases?supplierId=${s.supplierId}`).then(r => r.json()).then(d => {
                 if (d.success) setOpenPurchases(d.purchases.filter(p => p.status === "open" && p.remainingAmount > 0));
               }).catch(() => {});
@@ -874,7 +887,7 @@ export default function SuppliersView() {
         {/* Purchase Form Modal */}
         {showPurchaseForm && (
           <div className="modal-overlay" onClick={() => setShowPurchaseForm(false)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "500px" }}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px" }}>
               <div className="modal-header"><h2>📄 فاتورة توريد جديدة</h2><button className="modal-close" onClick={() => setShowPurchaseForm(false)}>✕</button></div>
               <div className="modal-body">
                 <div style={{ fontSize: "0.85rem", marginBottom: "0.75rem", color: "var(--text-secondary)" }}>المورد: {s.supplierName}</div>
@@ -940,6 +953,64 @@ export default function SuppliersView() {
                       </optgroup>
                     ))}
                   </select>
+                </div>
+                {/* Inventory items section */}
+                <div className="form-group" style={{ marginTop: "0.75rem", borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <label style={{ fontWeight: "bold", color: "var(--accent)", margin: 0 }}>📦 ربط بالمخزون</label>
+                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => {
+                      setPurchaseItems([...purchaseItems, { itemId: "", itemName: "", quantity: 1, amount: "" }]);
+                    }}>+ إضافة صنف</button>
+                  </div>
+                  <div style={{ fontSize: "0.75rem", opacity: 0.7, marginBottom: "0.4rem" }}>اختر الصنف والكمية والمبلغ المستقل لكل صنف</div>
+                  {purchaseItems.map((item, idx) => (
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 55px 80px 24px", gap: "0.3rem", marginBottom: "0.35rem", alignItems: "start" }}>
+                      <div>
+                        {item.isNew ? (
+                          <div style={{ display: "flex", gap: "0.2rem", alignItems: "center" }}>
+                            <input className="form-control" value={item.itemName}
+                              onChange={e => { const n = [...purchaseItems]; n[idx] = { ...n[idx], itemName: e.target.value }; setPurchaseItems(n); }}
+                              placeholder="اسم الصنف..." style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
+                            <button type="button" className="btn btn-sm btn-ghost" onClick={() => {
+                              const n = [...purchaseItems]; n[idx] = { ...n[idx], isNew: false, itemId: "", itemName: "" }; setPurchaseItems(n);
+                            }} style={{ fontSize: "0.6rem", padding: "0.15rem 0.25rem", whiteSpace: "nowrap" }}>← اختر</button>
+                          </div>
+                        ) : (
+                          <select className="form-control" value={item.itemId || ""}
+                            onChange={e => {
+                              const val = e.target.value; const n = [...purchaseItems];
+                              if (val === "__new__") { n[idx] = { ...n[idx], isNew: true, itemId: "", itemName: "" }; }
+                              else { const s = inventoryItems.find(i => i.itemId === val); n[idx] = { ...n[idx], itemId: val, itemName: s ? s.itemName : "", isNew: false }; }
+                              setPurchaseItems(n);
+                            }}
+                            style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }}>
+                            <option value="">— اختر —</option>
+                            <option value="__new__">➕ جديد</option>
+                            {inventoryItems.map(i => (
+                              <option key={i.itemId} value={i.itemId}>{i.itemName} ({i.availableQuantity})</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                      <div>
+                        <input type="number" min="1" className="form-control" value={item.quantity}
+                          onChange={e => { const n = [...purchaseItems]; n[idx] = { ...n[idx], quantity: e.target.value }; setPurchaseItems(n); }}
+                          style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
+                      </div>
+                      <div>
+                        <input type="number" min="0" step="0.01" className="form-control" value={item.amount}
+                          onChange={e => { const n = [...purchaseItems]; n[idx] = { ...n[idx], amount: e.target.value }; setPurchaseItems(n); }}
+                          placeholder="0" style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
+                      </div>
+                      <button type="button" onClick={() => { if (purchaseItems.length > 1) setPurchaseItems(purchaseItems.filter((_, i) => i !== idx)); }}
+                        style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "0.8rem", padding: "0.35rem 0 0" }}>✕</button>
+                    </div>
+                  ))}
+                  {purchaseItems.some(i => parseFloat(i.amount) > 0) && (
+                    <div style={{ fontSize: "0.8rem", color: "var(--accent)", marginTop: "0.15rem", textAlign: "left" }}>
+                      إجمالي الأصناف: {purchaseItems.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0).toLocaleString()} ر.ي
+                    </div>
+                  )}
                 </div>
                 <div className="form-group" style={{ marginTop: "0.5rem" }}>
                   <label>صورة الفاتورة</label>
