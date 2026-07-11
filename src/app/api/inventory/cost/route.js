@@ -1,0 +1,102 @@
+import { NextResponse } from "next/server";
+import { sheets } from "@/lib/google";
+import { getSheetData } from "@/lib/sheets";
+
+const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const itemId = searchParams.get("itemId");
+    const itemName = searchParams.get("itemName");
+
+    const invRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A2:D",
+    });
+    const invRows = invRes.data.values || [];
+
+    let targetItems = invRows.map((r) => ({
+      itemId: r[0], itemName: r[1] || "", totalQuantity: parseInt(r[2] || 0),
+    }));
+    if (itemId) targetItems = targetItems.filter((i) => i.itemId === itemId);
+    if (itemName) targetItems = targetItems.filter((i) => i.itemName.includes(itemName));
+
+    // 1. Aggregate from Supplier_Purchases inventoryItems
+    const purchRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A2:L",
+    });
+    const purchRows = purchRes.data.values || [];
+
+    // 2. Aggregate from Finance_Ledger (notes with [invId:X])
+    const ledgerRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Finance_Ledger!A2:M",
+    });
+    const ledgerRows = ledgerRes.data.values || [];
+
+    const results = targetItems.map((item) => {
+      const purchases = [];
+      let purchaseTotal = 0;
+      let purchaseQty = 0;
+
+      for (const r of purchRows) {
+        try {
+          const invItems = JSON.parse(r[10] || "[]");
+          for (const inv of invItems) {
+            if (inv.itemId === item.itemId || inv.itemName === item.itemName) {
+              const amt = parseFloat(inv.amount) || 0;
+              const qty = parseInt(inv.quantity) || 0;
+              purchases.push({
+                purchaseId: r[0],
+                date: r[2] || "",
+                description: r[3] || "",
+                itemName: inv.itemName,
+                quantity: qty,
+                unitCost: parseFloat(inv.unitCost) || (qty > 0 ? amt / qty : 0),
+                amount: amt,
+              });
+              purchaseTotal += amt;
+              purchaseQty += qty;
+            }
+          }
+        } catch {}
+      }
+
+      const expenses = [];
+      let expenseTotal = 0;
+      const expenseIdPattern = new RegExp(`\\[invId:${item.itemId}\\]`, "i");
+
+      for (const r of ledgerRows) {
+        const notes = r[6] || "";
+        if (expenseIdPattern.test(notes)) {
+          const amt = parseFloat(r[4] || 0);
+          expenses.push({
+            journalId: r[0],
+            date: r[1] || "",
+            accountCode: r[2] || "",
+            amount: amt,
+            notes,
+          });
+          expenseTotal += amt;
+        }
+      }
+
+      const totalCost = purchaseTotal + expenseTotal;
+      const totalQty = Math.max(purchaseQty, item.totalQuantity);
+      const unitCost = totalQty > 0 ? totalCost / totalQty : 0;
+
+      return {
+        itemId: item.itemId,
+        itemName: item.itemName,
+        totalQuantity: item.totalQuantity,
+        totalCost,
+        unitCost: Math.round(unitCost * 100) / 100,
+        breakdown: { purchases, expenses },
+      };
+    });
+
+    return NextResponse.json({ success: true, items: results });
+  } catch (error) {
+    console.error("Inventory cost API error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

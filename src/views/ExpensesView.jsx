@@ -192,6 +192,7 @@ export default function ExpensesView() {
     if (isPurchaseAccount && !purchaseItemName) { alert("اختر الصنف أو أدخل اسم الصنف الجديد"); return; }
     setSubmitting(true);
     const tk = localStorage.getItem("token");
+    const invNote = purchaseItemName ? ` [invId:${purchaseItemId || "new"}|${purchaseItemName}]` : "";
     try {
       if (isPurchaseAccount) {
         const res = await fetch("/api/finance/purchase", {
@@ -202,7 +203,7 @@ export default function ExpensesView() {
             accountCode: selectedAccount.accountCode,
             amount: parseFloat(amount),
             cashAccountCode: selectedCashAccount,
-            notes: [invoiceNumber ? `فاتورة #${invoiceNumber}` : "", invoiceLink ? `رابط: ${invoiceLink}` : "", notes].filter(Boolean).join(" | "),
+            notes: [invoiceNumber ? `فاتورة #${invoiceNumber}` : "", invoiceLink ? `رابط: ${invoiceLink}` : "", notes].filter(Boolean).join(" | ") + invNote,
             itemId: purchaseItemId || undefined,
             itemName: purchaseItemName,
             quantity: parseInt(purchaseQuantity) || 1,
@@ -355,7 +356,7 @@ export default function ExpensesView() {
     URL.revokeObjectURL(url);
   };
 
-  const isPurchaseAccount = selectedAccount?.accountCode === "5015-01";
+  const isPurchaseAccount = selectedAccount?.accountCode?.startsWith("5015");
 
   const clearSelection = () => {
     setSelectedAccount(null); setAccountPath([]); setSearchQuery("");
@@ -757,13 +758,14 @@ export default function ExpensesView() {
                 </div>
 
                 {isPurchaseAccount && (
-                  <div className="purchase-section full-width" style={{ gridColumn: "1 / -1", padding: "0.75rem", background: "rgba(255,215,0,0.08)", borderRadius: "var(--radius)", border: "1px solid rgba(255,215,0,0.15)" }}>
-                    <h4 style={{ fontSize: "0.85rem", marginBottom: "0.5rem", color: "var(--text-muted)" }}>📦 ربط بالمخزون</h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
+                  <div className="purchase-section full-width" style={{ gridColumn: "1 / -1", padding: "0.75rem", background: "rgba(99,102,241,0.06)", borderRadius: "var(--radius)", border: "1px solid rgba(99,102,241,0.12)" }}>
+                    <h4 style={{ fontSize: "0.85rem", marginBottom: "0.5rem", color: "var(--text-muted)" }}>📦 ربط بصنف من المخزون</h4>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: "0.75rem" }}>
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label>الصنف</label>
                         {showNewItemInput ? (
-                          <input type="text" className="form-control" value={purchaseItemName} onChange={e => setPurchaseItemName(e.target.value)} placeholder="اسم الصنف الجديد..." autoFocus />
+                          <input type="text" className="form-control" value={purchaseItemName}
+                            onChange={e => setPurchaseItemName(e.target.value)} placeholder="اسم الصنف الجديد..." autoFocus />
                         ) : (
                           <div style={{ display: "flex", gap: "0.5rem" }}>
                             <select className="form-control" value={purchaseItemId} onChange={e => {
@@ -771,7 +773,7 @@ export default function ExpensesView() {
                               setPurchaseItemId(e.target.value);
                               setPurchaseItemName(selected ? selected.itemName : "");
                             }} style={{ flex: 1 }}>
-                              <option value="">— اختر صنف —</option>
+                              <option value="">— بدون —</option>
                               {inventoryItems.map(i => <option key={i.itemId} value={i.itemId}>{i.itemName} ({i.availableQuantity} متاح)</option>)}
                             </select>
                             <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setShowNewItemInput(true); setPurchaseItemId(""); setPurchaseItemName(""); }}>➕ جديد</button>
@@ -783,7 +785,8 @@ export default function ExpensesView() {
                       </div>
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label>الكمية</label>
-                        <input type="number" min="1" className="form-control" value={purchaseQuantity} onChange={e => setPurchaseQuantity(e.target.value)} />
+                        <input type="number" min="1" className="form-control" value={purchaseQuantity}
+                          onChange={e => setPurchaseQuantity(e.target.value)} />
                       </div>
                     </div>
                   </div>
