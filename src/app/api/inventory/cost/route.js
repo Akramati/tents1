@@ -44,6 +44,7 @@ export async function GET(request) {
       let purchaseQty = 0;
 
       for (const r of purchRows) {
+        if (r[8] === "cancelled") continue;
         try {
           const invItems = JSON.parse(r[10] || "[]");
           for (const inv of invItems) {
