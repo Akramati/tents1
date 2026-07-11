@@ -36,7 +36,7 @@ export default function SuppliersView() {
   const [openPurchases, setOpenPurchases] = useState([]);
   const [carryPurchases, setCarryPurchases] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [purchaseItems, setPurchaseItems] = useState([{ itemId: "", itemName: "", quantity: 1, amount: "" }]);
+  const [purchaseItems, setPurchaseItems] = useState([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
 
   // Customer receivables state
   const [activeTab, setActiveTab] = useState("suppliers");
@@ -239,6 +239,7 @@ export default function SuppliersView() {
             itemId: i.itemId || undefined,
             itemName: i.itemName,
             quantity: parseInt(i.quantity) || 1,
+            unitCost: parseFloat(i.unitCost) || 0,
             amount: parseFloat(i.amount) || 0,
           })),
         }),
@@ -249,7 +250,7 @@ export default function SuppliersView() {
         setShowPurchaseForm(false);
         setPurchaseForm({ description: "", totalAmount: "", notes: "", date: "", costCenter: "", accountCode: "" });
         setPurchaseImage(null);
-        setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, amount: "" }]);
+        setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
 
         // Send WhatsApp to supplier
         const supplier = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
@@ -361,7 +362,8 @@ export default function SuppliersView() {
     // Inventory items
     const invItems = p.inventoryItems || [];
     for (const inv of invItems) {
-      rows.push(["-", `📦 ${inv.itemName} × ${inv.quantity}`, inv.amount?.toLocaleString() || "-"]);
+      const detail = `📦 ${inv.itemName} × ${inv.quantity}${inv.unitCost > 0 ? ` @ ${inv.unitCost}` : ""}`;
+      rows.push(["-", detail, inv.amount?.toLocaleString() || "-"]);
     }
 
     // Separator
@@ -504,7 +506,7 @@ export default function SuppliersView() {
               setShowPurchaseForm(true);
               setPurchaseForm({ description: "", totalAmount: "", notes: "", date: new Date().toLocaleDateString("en-CA"), costCenter: "", accountCode: "" });
               setCarryPurchases([]);
-              setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, amount: "" }]);
+              setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
               fetch(`/api/finance/suppliers/purchases?supplierId=${s.supplierId}`).then(r => r.json()).then(d => {
                 if (d.success) setOpenPurchases(d.purchases.filter(p => p.status === "open" && p.remainingAmount > 0));
               }).catch(() => {});
@@ -718,6 +720,7 @@ export default function SuppliersView() {
                           <div key={invIdx} style={{ fontSize: "0.72rem", display: "flex", gap: "0.5rem", padding: "0.1rem 0" }}>
                             <span>{inv.itemName}</span>
                             <span style={{ color: "#6366f1" }}>× {inv.quantity}</span>
+                            {inv.unitCost > 0 && <span style={{ color: "#6b7280" }}>{inv.unitCost} للوحدة</span>}
                             <span style={{ color: "#059669" }}>{inv.amount?.toLocaleString()} ر.ي</span>
                           </div>
                         ))}
@@ -1011,12 +1014,28 @@ export default function SuppliersView() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
                     <label style={{ fontWeight: "bold", color: "var(--accent)", margin: 0 }}>📦 ربط بالمخزون</label>
                     <button type="button" className="btn btn-sm btn-ghost" onClick={() => {
-                      setPurchaseItems([...purchaseItems, { itemId: "", itemName: "", quantity: 1, amount: "" }]);
+                      setPurchaseItems([...purchaseItems, { itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
                     }}>+ إضافة صنف</button>
                   </div>
-                  <div style={{ fontSize: "0.75rem", opacity: 0.7, marginBottom: "0.4rem" }}>اختر الصنف والكمية والمبلغ المستقل لكل صنف</div>
-                  {purchaseItems.map((item, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 55px 80px 24px", gap: "0.3rem", marginBottom: "0.35rem", alignItems: "start" }}>
+                  <div style={{ fontSize: "0.75rem", opacity: 0.7, marginBottom: "0.4rem" }}>أدخل تكلفة الوحدة أو الإجمالي — يحسب الآخر تلقائياً</div>
+                  {purchaseItems.map((item, idx) => {
+                    const updateItem = (changes) => {
+                      const n = [...purchaseItems];
+                      n[idx] = { ...n[idx], ...changes };
+                      // Auto-calculate: if unitCost changes or qty changes → recalc amount; if amount changes → recalc unitCost
+                      if ("unitCost" in changes || "quantity" in changes) {
+                        const q = parseInt(n[idx].quantity) || 1;
+                        const uc = parseFloat(n[idx].unitCost);
+                        if (uc > 0) n[idx].amount = (uc * q).toString();
+                      } else if ("amount" in changes) {
+                        const q = parseInt(n[idx].quantity) || 1;
+                        const a = parseFloat(n[idx].amount);
+                        if (a > 0 && q > 0) n[idx].unitCost = (a / q).toFixed(2);
+                      }
+                      setPurchaseItems(n);
+                    };
+                    return (
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 45px 65px 65px 24px", gap: "0.3rem", marginBottom: "0.35rem", alignItems: "start" }}>
                       <div>
                         {item.isNew ? (
                           <div style={{ display: "flex", gap: "0.2rem", alignItems: "center" }}>
@@ -1046,18 +1065,24 @@ export default function SuppliersView() {
                       </div>
                       <div>
                         <input type="number" min="1" className="form-control" value={item.quantity}
-                          onChange={e => { const n = [...purchaseItems]; n[idx] = { ...n[idx], quantity: e.target.value }; setPurchaseItems(n); }}
+                          onChange={e => updateItem({ quantity: e.target.value })}
                           style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
                       </div>
                       <div>
+                        <input type="number" min="0" step="0.01" className="form-control" value={item.unitCost}
+                          onChange={e => updateItem({ unitCost: e.target.value })}
+                          placeholder="سعر الوحدة" style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
+                      </div>
+                      <div>
                         <input type="number" min="0" step="0.01" className="form-control" value={item.amount}
-                          onChange={e => { const n = [...purchaseItems]; n[idx] = { ...n[idx], amount: e.target.value }; setPurchaseItems(n); }}
-                          placeholder="0" style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
+                          onChange={e => updateItem({ amount: e.target.value })}
+                          placeholder="الإجمالي" style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
                       </div>
                       <button type="button" onClick={() => { if (purchaseItems.length > 1) setPurchaseItems(purchaseItems.filter((_, i) => i !== idx)); }}
                         style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "0.8rem", padding: "0.35rem 0 0" }}>✕</button>
                     </div>
-                  ))}
+                    );
+                  })}
                   {purchaseItems.some(i => parseFloat(i.amount) > 0) && (
                     <div style={{ fontSize: "0.8rem", color: "var(--accent)", marginTop: "0.15rem", textAlign: "left" }}>
                       إجمالي الأصناف: {purchaseItems.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0).toLocaleString()} ر.ي
