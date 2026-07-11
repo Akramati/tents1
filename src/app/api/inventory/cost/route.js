@@ -32,6 +32,12 @@ export async function GET(request) {
     });
     const purchRows = purchRes.data.values || [];
 
+    // Build set of cancelled purchase IDs
+    const cancelledPurchases = new Set();
+    for (const r of purchRows) {
+      if (r[8] === "cancelled") cancelledPurchases.add(r[0]);
+    }
+
     // 2. Aggregate from Finance_Ledger (notes with [invId:X])
     const ledgerRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID, range: "Finance_Ledger!A2:M",
@@ -73,6 +79,9 @@ export async function GET(request) {
 
       for (const r of ledgerRows) {
         const notes = r[6] || "";
+        // Skip if this ledger entry references a cancelled purchase
+        const purchaseMatch = notes.match(/PUR-\d+/);
+        if (purchaseMatch && cancelledPurchases.has(purchaseMatch[0])) continue;
         if (expenseIdPattern.test(notes)) {
           const amt = parseFloat(r[4] || 0);
           expenses.push({
