@@ -86,8 +86,7 @@ export async function GET(request) {
       }
 
       const totalCost = purchaseTotal + expenseTotal;
-      const totalQty = Math.max(purchaseQty, item.totalQuantity);
-      const unitCost = totalQty > 0 ? totalCost / totalQty : 0;
+      const unitCost = item.totalQuantity > 0 ? totalCost / item.totalQuantity : 0;
 
       return {
         itemId: item.itemId,
