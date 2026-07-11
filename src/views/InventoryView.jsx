@@ -42,11 +42,12 @@ export default function InventoryView() {
     e.preventDefault();
     try {
       const body = {
+        itemId: editId || undefined,
         itemName: form.itemName,
         totalQuantity: parseInt(form.totalQuantity) || 0,
         underMaintenance: parseInt(form.underMaintenance) || 0,
       };
-      const res = await fetch(`/api/inventory${editId ? `?itemId=${editId}` : ""}`, {
+      const res = await fetch("/api/inventory", {
         method: editId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

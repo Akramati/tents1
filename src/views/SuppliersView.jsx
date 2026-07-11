@@ -338,20 +338,54 @@ export default function SuppliersView() {
     const paymentTransactions = transactions.filter(t =>
       t.type === "payment" && (t.notes?.includes(p.purchaseId) || t.purchaseId === p.purchaseId)
     );
-    const rows = paymentTransactions.map(t => [
-      t.date || "-",
-      (t.amount || 0).toLocaleString(),
-      formatPaymentParty(t.cashAccountCode),
-      t.notes || "-",
-    ]);
     const paidTotal = paymentTransactions.reduce((s, t) => s + (t.amount || 0), 0);
-    rows.push(["", p.totalAmount.toLocaleString(), "إجمالي الفاتورة", ""]);
+    const remaining = p.totalAmount - paidTotal;
+    const supplier = suppliers.find(s => s.supplierId === p.supplierId);
+    const supplierName = supplier?.supplierName || selectedSupplier?.supplierName || "";
+
+    const summary = [
+      { label: "رقم الفاتورة", value: p.purchaseId },
+      { label: "التاريخ", value: p.date || "-" },
+      { label: "المورد", value: supplierName },
+      { label: "البيان", value: p.description || "-" },
+    ];
+    if (p.costCenter) summary.push({ label: "مركز التكلفة", value: p.costCenter });
+    if (p.accountCode) summary.push({ label: "حساب المصروف", value: getAccountName(p.accountCode) });
+
+    const headers = ["التاريخ", "البيان", "المبلغ"];
+    const rows = [];
+
+    // Invoice entry row
+    rows.push([p.date || "-", p.description || "توريد", p.totalAmount.toLocaleString()]);
+
+    // Inventory items
+    const invItems = p.inventoryItems || [];
+    for (const inv of invItems) {
+      rows.push(["-", `📦 ${inv.itemName} × ${inv.quantity}`, inv.amount?.toLocaleString() || "-"]);
+    }
+
+    // Separator
+    rows.push(["───", "───", "───"]);
+
+    // Payments
+    for (const pt of paymentTransactions) {
+      rows.push([pt.date || "-", `💳 تسديد${pt.notes ? ` - ${pt.notes}` : ""}`, `(${pt.amount.toLocaleString()})`]);
+    }
+
     print("REPORT_TABLE", {
-      title: `فاتورة ${p.purchaseId}`,
-      subtitle: `${p.description || ""} | ${p.date}`,
-      headers: ["التاريخ", "المبلغ", "جهة الدفع", "البيان"],
+      title: `فاتورة توريد - ${p.purchaseId}`,
+      subtitle: `${supplierName} | ${p.date || ""}`,
+      summary,
+      dateHeader: p.date,
+      headers,
       rows,
-      footer: `المدفوع: ${paidTotal.toLocaleString()} ر.ي | المتبقي: ${(p.totalAmount - paidTotal).toLocaleString()} ر.ي | ${paidTotal >= p.totalAmount ? "مسددة ✅" : "مفتوحة 🔴"}`,
+      totals: {
+        income: paidTotal.toLocaleString(),
+        expense: remaining.toLocaleString(),
+        net: p.totalAmount.toLocaleString(),
+      },
+      totalLabels: { expense: "المتبقي", income: "المدفوع" },
+      footer: `الحالة: ${remaining <= 0 ? "مسددة ✅" : "مفتوحة 🔴"} | إجمالي الفاتورة: ${p.totalAmount.toLocaleString()} ر.ي`,
     });
   };
 
@@ -674,12 +708,30 @@ export default function SuppliersView() {
                     </div>
                     {p.description && <div style={{ fontSize: "0.78rem", opacity: 0.7, marginTop: "0.2rem" }}>{p.description}</div>}
 
+                    {p.costCenter && <div style={{ fontSize: "0.72rem", opacity: 0.6, marginTop: "0.15rem" }}>📍 مركز التكلفة: {p.costCenter}</div>}
+
+                    {/* Inventory items */}
+                    {p.inventoryItems && p.inventoryItems.length > 0 && (
+                      <div style={{ marginTop: "0.3rem", padding: "0.3rem", background: "rgba(99,102,241,0.06)", borderRadius: "6px" }}>
+                        <div style={{ fontSize: "0.7rem", fontWeight: "bold", color: "var(--accent)", marginBottom: "0.15rem" }}>📦 الأصناف:</div>
+                        {p.inventoryItems.map((inv, invIdx) => (
+                          <div key={invIdx} style={{ fontSize: "0.72rem", display: "flex", gap: "0.5rem", padding: "0.1rem 0" }}>
+                            <span>{inv.itemName}</span>
+                            <span style={{ color: "#6366f1" }}>× {inv.quantity}</span>
+                            <span style={{ color: "#059669" }}>{inv.amount?.toLocaleString()} ر.ي</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Summary row */}
                     <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem", fontSize: "0.78rem" }}>
                       <span>الإجمالي: <strong>{p.totalAmount?.toLocaleString() || 0}</strong></span>
                       <span style={{ color: "#059669" }}>المدفوع: <strong>{totalPaid.toLocaleString()}</strong></span>
                       <span style={{ color: "#dc2626" }}>المتبقي: <strong>{remaining.toLocaleString()}</strong></span>
                     </div>
+
+                    {p.notes && <div style={{ fontSize: "0.7rem", opacity: 0.5, marginTop: "0.15rem" }}>📝 {p.notes}</div>}
 
                     {/* Payments Table */}
                     {g.payments.length > 0 && (
