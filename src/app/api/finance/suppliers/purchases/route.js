@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sheets } from "@/lib/google";
-import { addFinanceEntry } from "@/lib/sheets";
+import { addFinanceEntry, deleteFinanceEntry } from "@/lib/sheets";
 import { requireAuth, requireAdmin } from "@/lib/auth";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -13,7 +13,7 @@ export async function GET(request) {
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Supplier_Purchases!A2:K",
+      range: "Supplier_Purchases!A2:L",
     });
     let rows = res.data.values || [];
     if (supplierId) rows = rows.filter((r) => r[1] === supplierId);
@@ -31,6 +31,7 @@ export async function GET(request) {
       status: r[8] || "open",
       imageUrl: r[9] || "",
       inventoryItems: r[10] ? (() => { try { return JSON.parse(r[10]); } catch { return []; } })() : [],
+      journalId: r[11] || "",
     }));
 
     purchases.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -55,7 +56,7 @@ export async function DELETE(request) {
     }
 
     const pRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:J",
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:L",
     });
     const pRows = pRes.data.values || [];
     const pIdx = pRows.findIndex((r) => r[0] === purchaseId);
@@ -68,6 +69,8 @@ export async function DELETE(request) {
     const supplierId = pRows[pIdx][1];
     const totalAmt = parseFloat(pRows[pIdx][4] || 0);
     const paidAmt = parseFloat(pRows[pIdx][5] || 0);
+    const journalId = pRows[pIdx][11] || "";
+    const remainingAmt = totalAmt - paidAmt;
 
     // Mark as cancelled
     await sheets.spreadsheets.values.update({
@@ -76,21 +79,28 @@ export async function DELETE(request) {
       requestBody: { values: [["cancelled"]] },
     });
 
-    // Reverse supplier balance (subtract the total amount)
-    const supRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID, range: "Suppliers!A:G",
-    });
-    const supRows = supRes.data.values || [];
-    const supIdx = supRows.findIndex((r) => r[0] === supplierId);
-    if (supIdx >= 0) {
-      const supRow2 = supIdx + 1;
-      const curBalance = parseFloat(supRows[supIdx][4] || 0);
-      const newBalance = Math.max(0, curBalance - totalAmt);
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID, range: `Suppliers!E${supRow2}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [[newBalance.toString()]] },
+    // Reverse finance ledger entry for the purchase
+    if (journalId) {
+      await deleteFinanceEntry(journalId);
+    }
+
+    // Reverse supplier balance: subtract remaining amount only (paid amounts are separate)
+    if (remainingAmt > 0) {
+      const supRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: "Suppliers!A:G",
       });
+      const supRows = supRes.data.values || [];
+      const supIdx = supRows.findIndex((r) => r[0] === supplierId);
+      if (supIdx >= 0) {
+        const supRow2 = supIdx + 1;
+        const curBalance = parseFloat(supRows[supIdx][4] || 0);
+        const newBalance = Math.max(0, curBalance - remainingAmt);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID, range: `Suppliers!E${supRow2}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [[newBalance.toString()]] },
+        });
+      }
     }
 
     // Record cancellation transaction
@@ -105,13 +115,12 @@ export async function DELETE(request) {
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[(maxTrans + 1).toString(), supplierId, new Date().toLocaleDateString("en-CA"),
-          "cancel", totalAmt.toString(), purchaseId, `إلغاء فاتورة ${pRows[pIdx][3] || purchaseId}`]],
+          "cancel", remainingAmt.toString(), purchaseId, `إلغاء فاتورة ${pRows[pIdx][3] || purchaseId}`]],
       },
     });
 
-    // If there were payments against this purchase, we should note them
     const msg = paidAmt > 0
-      ? `تم إلغاء الفاتورة مع العلم بوجود ${paidAmt} ريال مدفوعة مسبقاً`
+      ? `تم إلغاء الفاتورة (المتبقي ${remainingAmt} ريال). المدفوعات السابقة (${paidAmt} ريال) لم تتأثر.`
       : "تم إلغاء الفاتورة";
 
     return NextResponse.json({ success: true, message: msg });
@@ -198,14 +207,25 @@ export async function POST(request) {
     const carryNote = carriedNotes.length > 0 ? `[مرحل من: ${carriedNotes.join("، ")}]` : "";
     const fullNotes = [notes || "", carryNote].filter(Boolean).join(" ");
 
+    // Record in Finance_Ledger first to get journalId
+    const journalId = await addFinanceEntry({
+      date: date || new Date().toLocaleDateString("en-CA"),
+      accountCode,
+      entryType: "expense",
+      amount: amt,
+      cashAccountCode: "2101",
+      notes: `توريد من مورد: ${supRows[supIdx][1] || supplierId} - ${description} (${newPurchId}) [${costCenter}]${carryNote ? ` ${carryNote}` : ""}`,
+      costCenter,
+    });
+
     const invItemsJson = (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0)
       ? JSON.stringify(inventoryItems) : "";
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:K",
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:L",
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[newPurchId, supplierId, date || new Date().toLocaleDateString("en-CA"),
-          description, amt.toString(), "0", costCenter, fullNotes, "open", imageUrl || "", invItemsJson]],
+          description, amt.toString(), "0", costCenter, fullNotes, "open", imageUrl || "", invItemsJson, journalId.toString()]],
       },
     });
 
@@ -234,16 +254,6 @@ export async function POST(request) {
         values: [[(maxTrans + 1).toString(), supplierId, date || new Date().toLocaleDateString("en-CA"),
           "purchase", amt.toString(), newPurchId, transNote, "2101"]],
       },
-    });
-
-    const journalId = await addFinanceEntry({
-      date: date || new Date().toLocaleDateString("en-CA"),
-      accountCode,
-      entryType: "expense",
-      amount: amt,
-      cashAccountCode: "2101",
-      notes: `توريد من مورد: ${supRows[supIdx][1] || supplierId} - ${description} (${newPurchId}) [${costCenter}]${carryNote ? ` ${carryNote}` : ""}`,
-      costCenter,
     });
 
     // Process inventory items: create new items in inventory (existing items are just linked for documentation)
