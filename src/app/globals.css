@@ -2379,27 +2379,76 @@ button, .btn {
 .tx-recent-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
 
 /* Responsive */
+/* Action buttons direct (for mobile-friendly tap targets) */
+.action-buttons-direct {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.btn-icon {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+  padding: 0;
+}
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.btn-icon.danger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.05);
+}
+.btn-icon.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+/* Sub-tabs for inventory column switching */
+.inv-sub-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 600;
+}
+.btn-ghost:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: var(--primary);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
-  /* Inventory mobile styling */
   .inventory-section {
     padding: 1rem !important;
   }
-  
   .inventory-section .section-title-row {
     flex-direction: column;
     align-items: stretch;
     gap: 1rem;
     margin-bottom: 1.5rem;
   }
-
   .inventory-section .btn-group {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
     width: 100%;
   }
-
   .inventory-section .btn-group .btn {
     width: 100%;
     margin: 0;
@@ -2407,11 +2456,6 @@ button, .btn {
     padding: 0.6rem 0.5rem;
     justify-content: center;
   }
-
-  .inventory-section .btn-group .btn:first-child:not(:only-child) {
-    grid-column: span 2;
-  }
-
   .inv-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -2420,174 +2464,34 @@ button, .btn {
     padding-bottom: 1px;
     margin-bottom: 1rem;
   }
-
   .inv-tab {
     flex: 1 0 auto;
     text-align: center;
     padding: 0.6rem 1rem;
     font-size: 0.85rem;
   }
-
   .mini-grid {
     grid-template-columns: 1fr !important;
     gap: 1rem !important;
   }
-
-  .inv-form {
-    padding: 1rem;
-    margin-bottom: 1rem;
-  }
-
+  .inv-form { padding: 1rem; margin-bottom: 1rem; }
   .inv-form .form-actions {
     flex-direction: column;
     gap: 0.5rem;
   }
-
   .inv-form .form-actions .btn {
     width: 100%;
     justify-content: center;
     padding: 0.75rem;
   }
-
-  /* Responsive Table as Cards */
-  .inv-table-wrapper {
-    overflow: visible;
+  .inv-sub-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
-
-  .inv-table, 
-  .inv-table thead, 
-  .inv-table tbody, 
-  .inv-table tr, 
-  .inv-table td {
-    display: block;
-    width: 100%;
+  .inv-sub-tabs .btn {
+    flex: 1 0 auto;
+    white-space: nowrap;
   }
-
-  .inv-table thead {
-    display: none; /* Hide traditional headers */
-  }
-
-  .inv-table tbody tr {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--card-border);
-    border-radius: 12px;
-    margin-bottom: 1.25rem;
-    padding: 1rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .inv-table tbody tr:hover td {
-    background: transparent;
-  }
-
-  .inv-table td {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 0;
-    border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
-    font-size: 0.85rem;
-    text-align: left;
-  }
-
-  .inv-table td:last-child {
-    border-bottom: none;
-    padding-top: 0.8rem;
-    margin-top: 0.5rem;
-    justify-content: center;
-  }
-
-  /* Highlight Item Name in Card */
-  .inv-table td[data-label="الصنف"] {
-    flex-direction: column;
-    align-items: flex-start;
-    border-bottom: 1.5px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 0.75rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .inv-table td[data-label="الصنف"]::before {
-    display: none; /* Hide label for item name */
-  }
-
-  .inv-table td[data-label="الصنف"] strong {
-    font-size: 1.05rem;
-    color: var(--gold);
-    display: block;
-    margin-top: 0.25rem;
-  }
-
-  /* Actions styling on mobile card */
-  .inv-table td.actions-cell {
-    border-bottom: none;
-  }
-
-  .inv-table td.actions-cell::before {
-    display: none;
-  }
-
-  .three-dots-wrapper {
-    width: 100%;
-  }
-
-  .three-dots-btn {
-    width: 100%;
-    padding: 0.6rem;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    text-align: center;
-    color: var(--text-secondary);
-  }
-
-  .dots-menu {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    background: #111827; /* Dark elegant sheet */
-    border-top: 1px solid var(--card-border);
-    border-radius: 20px 20px 0 0;
-    padding: 1.5rem 1rem 2rem;
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .dots-menu-item {
-    padding: 1rem;
-    font-size: 0.95rem;
-    text-align: center;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .dots-menu-item.danger {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.2);
-  }
-
-  /* Label generator for other cells */
-  .inv-table td::before {
-    content: attr(data-label);
-    font-weight: 700;
-    color: var(--text-secondary);
-    opacity: 0.8;
-    margin-left: 1rem;
-    font-size: 0.8rem;
-  }
-}
-
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
 }
 
 @media (max-width: 600px) {

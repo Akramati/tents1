@@ -18,6 +18,7 @@ export default function InventoryView() {
 
   const [costMap, setCostMap] = useState({});
   const [rentedMap, setRentedMap] = useState({});
+  const [subTab, setSubTab] = useState("quantities");
 
   const fetchItems = async () => {
     setLoading(true);
@@ -160,6 +161,13 @@ export default function InventoryView() {
         <button className={`inv-tab ${tab === "maintenance" ? "active" : ""}`} onClick={() => { setTab("maintenance"); fetchMtLogs(); }}>🔧 سجل الصيانة</button>
       </div>
 
+      {tab === "stock" && (
+        <div className="inv-sub-tabs">
+          <button type="button" className={`btn btn-sm ${subTab === "quantities" ? "btn-primary" : "btn-ghost"}`} onClick={() => setSubTab("quantities")}>📊 الكميات والجرد</button>
+          <button type="button" className={`btn btn-sm ${subTab === "finance" ? "btn-primary" : "btn-ghost"}`} onClick={() => setSubTab("finance")}>💰 التكاليف والمالية</button>
+        </div>
+      )}
+
       {tab === "stock" ? (
         <>
           {showForm && (
@@ -207,58 +215,64 @@ export default function InventoryView() {
                   <tr>
                     <th>#</th>
                     <th>الصنف</th>
-                    <th>الإجمالي</th>
-                    <th>تحت الصيانة</th>
-                    <th>العجز</th>
-                    <th>المتاح</th>
-                    <th>المؤجر</th>
-                    <th>المتوفر</th>
-                    <th>تكلفة الوحدة</th>
-                    <th>إجمالي التكلفة</th>
+                    {subTab === "quantities" ? (
+                      <>
+                        <th>الإجمالي</th>
+                        <th>تحت الصيانة</th>
+                        <th>العجز</th>
+                        <th>المتاح</th>
+                        <th>المؤجر</th>
+                        <th>المتوفر</th>
+                      </>
+                    ) : (
+                      <>
+                        <th>تكلفة الوحدة</th>
+                        <th>إجمالي التكلفة</th>
+                      </>
+                    )}
                     <th>إجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.itemId}>
-                      <td className="cell-mono" data-label="#">{item.itemId}</td>
-                      <td data-label="الصنف"><strong>{item.itemName}</strong></td>
-                      <td className="cell-center" data-label="الإجمالي">{item.totalQuantity}</td>
-                      <td className="cell-center" data-label="تحت الصيانة">
-                        {item.underMaintenance > 0 ? <span className="text-red">{item.underMaintenance}</span> : item.underMaintenance}
-                      </td>
-                      <td className="cell-center" data-label="العجز">
-                        {item.deficit > 0 ? <span className="text-red">{item.deficit}</span> : item.deficit || 0}
-                      </td>
-                      <td className="cell-center" data-label="المتاح">
-                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) < 5 ? "low" : "ok"}`}>
-                          {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0))}
-                        </span>
-                      </td>
-                      <td className="cell-center" data-label="المؤجر">{rentedMap[item.itemId] > 0 ? rentedMap[item.itemId] : "0"}</td>
-                      <td className="cell-center" data-label="المتوفر">
-                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "out" : "ok"}`}>
-                          {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0))}
-                        </span>
-                      </td>
-                      <td className="cell-center" data-label="تكلفة الوحدة">
-                        {costMap[item.itemId] ? `${costMap[item.itemId].unitCost.toLocaleString()} ﷼` : "—"}
-                      </td>
-                      <td className="cell-center" data-label="إجمالي التكلفة">
-                        {costMap[item.itemId] ? `${costMap[item.itemId].totalCost.toLocaleString()} ﷼` : "—"}
-                      </td>
-                      <td className="actions-cell" data-label="إجراءات">
-                        <div className="three-dots-wrapper">
-                          <button className="three-dots-btn" onClick={() => setMenuOpenId(menuOpenId === item.itemId ? null : item.itemId)}>•••</button>
-                          {menuOpenId === item.itemId && (
-                            <>
-                              <div className="menu-backdrop" onClick={() => setMenuOpenId(null)}></div>
-                              <div className="dots-menu">
-                                <button className="dots-menu-item" onClick={() => { setMenuOpenId(null); startEdit(item); }}>✏️ تعديل</button>
-                                <button className="dots-menu-item danger" onClick={() => { setMenuOpenId(null); setDeleteConfirm(item); }}>🗑️ حذف</button>
-                              </div>
-                            </>
-                          )}
+                      <td className="cell-mono">{item.itemId}</td>
+                      <td><strong>{item.itemName}</strong></td>
+                      {subTab === "quantities" ? (
+                        <>
+                          <td className="cell-center">{item.totalQuantity}</td>
+                          <td className="cell-center">
+                            {item.underMaintenance > 0 ? <span className="text-red">{item.underMaintenance}</span> : item.underMaintenance}
+                          </td>
+                          <td className="cell-center">
+                            {item.deficit > 0 ? <span className="text-red">{item.deficit}</span> : item.deficit || 0}
+                          </td>
+                          <td className="cell-center">
+                            <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) < 5 ? "low" : "ok"}`}>
+                              {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0))}
+                            </span>
+                          </td>
+                          <td className="cell-center">{rentedMap[item.itemId] > 0 ? rentedMap[item.itemId] : "0"}</td>
+                          <td className="cell-center">
+                            <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "out" : "ok"}`}>
+                              {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0))}
+                            </span>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="cell-center">
+                            {costMap[item.itemId] ? `${costMap[item.itemId].unitCost.toLocaleString()} ﷼` : "—"}
+                          </td>
+                          <td className="cell-center">
+                            {costMap[item.itemId] ? `${costMap[item.itemId].totalCost.toLocaleString()} ﷼` : "—"}
+                          </td>
+                        </>
+                      )}
+                      <td className="actions-cell">
+                        <div className="action-buttons-direct">
+                          <button type="button" className="btn-icon" onClick={() => startEdit(item)} title="تعديل">✏️</button>
+                          <button type="button" className="btn-icon danger" onClick={() => setDeleteConfirm(item)} title="حذف">🗑️</button>
                         </div>
                       </td>
                     </tr>
@@ -295,15 +309,15 @@ export default function InventoryView() {
                 <tbody>
                   {mtLogs.map((log) => (
                     <tr key={log.logId}>
-                      <td className="cell-mono" data-label="#">{log.logId}</td>
-                      <td data-label="الصنف"><strong>{log.itemName}</strong></td>
-                      <td className="cell-center" data-label="تاريخ البداية">{log.startDate || "—"}</td>
-                      <td className="cell-center" data-label="تاريخ النهاية">{log.endDate || "—"}</td>
-                      <td className="cell-reason" data-label="السبب">{log.reason || "—"}</td>
-                      <td className="cell-center" data-label="الحالة">
+                      <td className="cell-mono">{log.logId}</td>
+                      <td><strong>{log.itemName}</strong></td>
+                      <td className="cell-center">{log.startDate || "—"}</td>
+                      <td className="cell-center">{log.endDate || "—"}</td>
+                      <td className="cell-reason">{log.reason || "—"}</td>
+                      <td className="cell-center">
                         {log.endDate ? <span className="avail-badge ok">مُصلَح</span> : <span className="avail-badge out">قيد الصيانة</span>}
                       </td>
-                      <td data-label="إجراءات">
+                      <td>
                         {!log.endDate && (
                           <button className="btn-sm btn-success" onClick={() => handleMarkResolved(log.logId)}>✅ تم الإصلاح</button>
                         )}
