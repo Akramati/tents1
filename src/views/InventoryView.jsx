@@ -221,33 +221,33 @@ export default function InventoryView() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.itemId}>
-                      <td className="cell-mono">{item.itemId}</td>
-                      <td><strong>{item.itemName}</strong></td>
-                      <td className="cell-center">{item.totalQuantity}</td>
-                      <td className="cell-center">
+                      <td className="cell-mono" data-label="#">{item.itemId}</td>
+                      <td data-label="الصنف"><strong>{item.itemName}</strong></td>
+                      <td className="cell-center" data-label="الإجمالي">{item.totalQuantity}</td>
+                      <td className="cell-center" data-label="تحت الصيانة">
                         {item.underMaintenance > 0 ? <span className="text-red">{item.underMaintenance}</span> : item.underMaintenance}
                       </td>
-                      <td className="cell-center">
+                      <td className="cell-center" data-label="العجز">
                         {item.deficit > 0 ? <span className="text-red">{item.deficit}</span> : item.deficit || 0}
                       </td>
-                      <td className="cell-center">
+                      <td className="cell-center" data-label="المتاح">
                         <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) < 5 ? "low" : "ok"}`}>
                           {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0))}
                         </span>
                       </td>
-                      <td className="cell-center">{rentedMap[item.itemId] > 0 ? rentedMap[item.itemId] : "0"}</td>
-                      <td className="cell-center">
+                      <td className="cell-center" data-label="المؤجر">{rentedMap[item.itemId] > 0 ? rentedMap[item.itemId] : "0"}</td>
+                      <td className="cell-center" data-label="المتوفر">
                         <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "out" : "ok"}`}>
                           {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0))}
                         </span>
                       </td>
-                      <td className="cell-center">
+                      <td className="cell-center" data-label="تكلفة الوحدة">
                         {costMap[item.itemId] ? `${costMap[item.itemId].unitCost.toLocaleString()} ﷼` : "—"}
                       </td>
-                      <td className="cell-center">
+                      <td className="cell-center" data-label="إجمالي التكلفة">
                         {costMap[item.itemId] ? `${costMap[item.itemId].totalCost.toLocaleString()} ﷼` : "—"}
                       </td>
-                      <td className="actions-cell">
+                      <td className="actions-cell" data-label="إجراءات">
                         <div className="three-dots-wrapper">
                           <button className="three-dots-btn" onClick={() => setMenuOpenId(menuOpenId === item.itemId ? null : item.itemId)}>•••</button>
                           {menuOpenId === item.itemId && (
@@ -295,15 +295,15 @@ export default function InventoryView() {
                 <tbody>
                   {mtLogs.map((log) => (
                     <tr key={log.logId}>
-                      <td className="cell-mono">{log.logId}</td>
-                      <td><strong>{log.itemName}</strong></td>
-                      <td className="cell-center">{log.startDate || "—"}</td>
-                      <td className="cell-center">{log.endDate || "—"}</td>
-                      <td className="cell-reason">{log.reason || "—"}</td>
-                      <td className="cell-center">
+                      <td className="cell-mono" data-label="#">{log.logId}</td>
+                      <td data-label="الصنف"><strong>{log.itemName}</strong></td>
+                      <td className="cell-center" data-label="تاريخ البداية">{log.startDate || "—"}</td>
+                      <td className="cell-center" data-label="تاريخ النهاية">{log.endDate || "—"}</td>
+                      <td className="cell-reason" data-label="السبب">{log.reason || "—"}</td>
+                      <td className="cell-center" data-label="الحالة">
                         {log.endDate ? <span className="avail-badge ok">مُصلَح</span> : <span className="avail-badge out">قيد الصيانة</span>}
                       </td>
-                      <td>
+                      <td data-label="إجراءات">
                         {!log.endDate && (
                           <button className="btn-sm btn-success" onClick={() => handleMarkResolved(log.logId)}>✅ تم الإصلاح</button>
                         )}
