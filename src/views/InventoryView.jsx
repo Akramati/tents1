@@ -17,6 +17,7 @@ export default function InventoryView() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const [costMap, setCostMap] = useState({});
+  const [rentedMap, setRentedMap] = useState({});
 
   const fetchItems = async () => {
     setLoading(true);
@@ -35,6 +36,15 @@ export default function InventoryView() {
             setCostMap(map);
           }
         }
+      }
+      // Fetch current rented-out quantities
+      const today = new Date().toISOString().slice(0, 10);
+      const availRes = await fetch(`/api/inventory/available?date=${today}`);
+      const availData = await availRes.json();
+      if (availData.success) {
+        const map = {};
+        availData.items.forEach((i) => { map[i.itemId] = i.rentedOnDate || 0; });
+        setRentedMap(map);
       }
     } catch (err) { console.error(err); }
     setLoading(false);
@@ -135,8 +145,10 @@ export default function InventoryView() {
             items: items.map((item) => ({
               name: item.itemName, expected: item.totalQuantity,
               actual: item.totalQuantity - (item.underMaintenance || 0),
+              rented: rentedMap[item.itemId] || 0,
+              available: Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0)),
               deficit: item.underMaintenance,
-              status: item.underMaintenance > 0 ? "عجز" : "متوفر",
+              status: (item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "غير متوفر" : "متوفر",
             })),
           })}>🖨️ طباعة الجرد</button>
         </div>
@@ -193,6 +205,8 @@ export default function InventoryView() {
                     <th>الإجمالي</th>
                     <th>تحت الصيانة</th>
                     <th>المتاح</th>
+                    <th>المؤجر</th>
+                    <th>المتوفر</th>
                     <th>تكلفة الوحدة</th>
                     <th>إجمالي التكلفة</th>
                     <th>إجراءات</th>
@@ -210,6 +224,12 @@ export default function InventoryView() {
                       <td className="cell-center">
                         <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0)) < 5 ? "low" : "ok"}`}>
                           {item.totalQuantity - (item.underMaintenance || 0)}
+                        </span>
+                      </td>
+                      <td className="cell-center">{rentedMap[item.itemId] > 0 ? rentedMap[item.itemId] : "0"}</td>
+                      <td className="cell-center">
+                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "out" : "ok"}`}>
+                          {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0))}
                         </span>
                       </td>
                       <td className="cell-center">

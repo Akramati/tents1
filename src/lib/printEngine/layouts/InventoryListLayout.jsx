@@ -11,6 +11,8 @@ const InventoryListLayout = forwardRef(({ data, settings, previewSettings }, ref
   const totalExpected = items.reduce((s, i) => s + (parseFloat(i.expected) || 0), 0);
   const totalActual = items.reduce((s, i) => s + (parseFloat(i.actual) || 0), 0);
   const totalDeficit = items.reduce((s, i) => s + (parseFloat(i.deficit) || 0), 0);
+  const totalRented = items.reduce((s, i) => s + (parseFloat(i.rented) || 0), 0);
+  const totalAvailable = items.reduce((s, i) => s + (parseFloat(i.available) || 0), 0);
 
   return (
     <div ref={ref} className="ps-root" dir="rtl">
@@ -30,6 +32,8 @@ const InventoryListLayout = forwardRef(({ data, settings, previewSettings }, ref
               <th>الصنف</th>
               <th>المتوقع</th>
               <th>الفعلي</th>
+              <th>المؤجر</th>
+              <th>المتوفر</th>
               <th>العجز</th>
               <th>الحالة</th>
             </tr>
@@ -41,8 +45,10 @@ const InventoryListLayout = forwardRef(({ data, settings, previewSettings }, ref
                 <td>{item.name}</td>
                 <td>{item.expected}</td>
                 <td>{item.actual}</td>
+                <td>{item.rented || 0}</td>
+                <td>{item.available}</td>
                 <td className={parseFloat(item.deficit) > 0 ? "ps-inv-deficit" : "ps-inv-ok"}>{item.deficit}</td>
-                <td className={item.status === "عجز" ? "ps-inv-deficit" : "ps-inv-ok"}>{item.status || "✓"}</td>
+                <td className={item.available <= 0 ? "ps-inv-deficit" : "ps-inv-ok"}>{item.status || "✓"}</td>
               </tr>
             ))}
           </tbody>
@@ -51,6 +57,8 @@ const InventoryListLayout = forwardRef(({ data, settings, previewSettings }, ref
               <td colSpan="2">الإجمالي</td>
               <td>{totalExpected}</td>
               <td>{totalActual}</td>
+              <td>{totalRented}</td>
+              <td>{totalAvailable}</td>
               <td className={totalDeficit > 0 ? "ps-inv-deficit" : "ps-inv-ok"}>{totalDeficit}</td>
               <td></td>
             </tr>
