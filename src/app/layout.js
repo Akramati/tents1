@@ -3,6 +3,7 @@ import "./globals.css";
 import PrintProviderWrapper from "@/components/PrintProviderWrapper";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
+import AppShell from "@/components/layout/AppShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,7 +27,9 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <PrintProviderWrapper>
             <AuthGuard>
-              {children}
+              <AppShell>
+                {children}
+              </AppShell>
             </AuthGuard>
           </PrintProviderWrapper>
         </AuthProvider>
