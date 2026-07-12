@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Inventory_Stock!A2:D",
+      range: "Inventory_Stock!A2:E",
     });
 
     const rows = res.data.values || [];
@@ -17,7 +17,8 @@ export async function GET() {
       itemName: row[1] || "",
       totalQuantity: parseInt(row[2] || 0),
       underMaintenance: parseInt(row[3] || 0),
-      availableQuantity: parseInt(row[2] || 0) - parseInt(row[3] || 0),
+      deficit: parseInt(row[4] || 0),
+      availableQuantity: parseInt(row[2] || 0) - parseInt(row[3] || 0) - parseInt(row[4] || 0),
     }));
 
     return NextResponse.json({ success: true, items });
@@ -34,7 +35,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { itemName, totalQuantity = 0, underMaintenance = 0 } = body;
+    const { itemName, totalQuantity = 0, underMaintenance = 0, deficit = 0 } = body;
 
     if (!itemName) {
       return NextResponse.json(
@@ -58,11 +59,11 @@ export async function POST(request) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Inventory_Stock!A:D",
+      range: "Inventory_Stock!A:E",
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
-        values: [[nextId, itemName, totalQuantity.toString(), underMaintenance.toString()]],
+        values: [[nextId, itemName, totalQuantity.toString(), underMaintenance.toString(), deficit.toString()]],
       },
     });
 
@@ -73,7 +74,8 @@ export async function POST(request) {
         itemName,
         totalQuantity,
         underMaintenance,
-        availableQuantity: totalQuantity - underMaintenance,
+        deficit,
+        availableQuantity: totalQuantity - underMaintenance - deficit,
       },
     });
   } catch (error) {
@@ -108,9 +110,9 @@ export async function DELETE(request) {
     const sheetRow = rowIndex + 1;
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `Inventory_Stock!A${sheetRow}:D${sheetRow}`,
+      range: `Inventory_Stock!A${sheetRow}:E${sheetRow}`,
       valueInputOption: "RAW",
-      requestBody: { values: [["", "", "", ""]] },
+      requestBody: { values: [["", "", "", "", ""]] },
     });
 
     return NextResponse.json({ success: true, message: "تم حذف الصنف" });
@@ -124,7 +126,7 @@ export async function DELETE(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { itemId, itemName, totalQuantity, underMaintenance } = body;
+    const { itemId, itemName, totalQuantity, underMaintenance, deficit } = body;
 
     if (!itemId) {
       return NextResponse.json(
@@ -152,13 +154,14 @@ export async function PUT(request) {
     const name = itemName ?? rows[rowIndex][1] ?? "";
     const qty = (totalQuantity ?? parseInt(rows[rowIndex][2] || 0)).toString();
     const maint = (underMaintenance ?? parseInt(rows[rowIndex][3] || 0)).toString();
+    const def = (deficit ?? parseInt(rows[rowIndex][4] || 0)).toString();
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `Inventory_Stock!A${sheetRow}:D${sheetRow}`,
+      range: `Inventory_Stock!A${sheetRow}:E${sheetRow}`,
       valueInputOption: "RAW",
       requestBody: {
-        values: [[itemId.toString(), name, qty, maint]],
+        values: [[itemId.toString(), name, qty, maint, def]],
       },
     });
 
@@ -169,7 +172,8 @@ export async function PUT(request) {
         itemName: name,
         totalQuantity: parseInt(qty),
         underMaintenance: parseInt(maint),
-        availableQuantity: parseInt(qty) - parseInt(maint),
+        deficit: parseInt(def),
+        availableQuantity: parseInt(qty) - parseInt(maint) - parseInt(def),
       },
     });
   } catch (error) {

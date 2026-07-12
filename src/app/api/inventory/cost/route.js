@@ -12,12 +12,12 @@ export async function GET(request) {
     const itemName = searchParams.get("itemName");
 
     const invRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A2:D",
+      spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A2:E",
     });
     const invRows = invRes.data.values || [];
 
     let targetItems = invRows.map((r) => ({
-      itemId: r[0], itemName: r[1] || "", totalQuantity: parseInt(r[2] || 0),
+      itemId: r[0], itemName: r[1] || "", totalQuantity: parseInt(r[2] || 0), deficit: parseInt(r[4] || 0),
     }));
     if (itemId) targetItems = targetItems.filter((i) => i.itemId === itemId);
     if (itemIds) {
@@ -104,12 +104,14 @@ export async function GET(request) {
       }
 
       const totalCost = purchaseTotal + expenseTotal;
-      const unitCost = item.totalQuantity > 0 ? totalCost / item.totalQuantity : 0;
+      const effectiveQty = Math.max(1, item.totalQuantity - item.deficit);
+      const unitCost = effectiveQty > 0 ? totalCost / effectiveQty : 0;
 
       return {
         itemId: item.itemId,
         itemName: item.itemName,
         totalQuantity: item.totalQuantity,
+        deficit: item.deficit,
         totalCost,
         unitCost: Math.round(unitCost * 100) / 100,
         breakdown: { purchases, expenses },

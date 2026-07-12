@@ -10,7 +10,7 @@ export default function InventoryView() {
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ itemName: "", totalQuantity: "", underMaintenance: "" });
+  const [form, setForm] = useState({ itemName: "", totalQuantity: "", underMaintenance: "", deficit: "" });
   const [mtLogs, setMtLogs] = useState([]);
   const [mtLoading, setMtLoading] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
@@ -70,6 +70,7 @@ export default function InventoryView() {
         itemName: form.itemName,
         totalQuantity: parseInt(form.totalQuantity) || 0,
         underMaintenance: parseInt(form.underMaintenance) || 0,
+        deficit: parseInt(form.deficit) || 0,
       };
       const res = await fetch("/api/inventory", {
         method: editId ? "PUT" : "POST",
@@ -78,7 +79,7 @@ export default function InventoryView() {
       });
       const data = await res.json();
       if (data.success) {
-        setForm({ itemName: "", totalQuantity: "", underMaintenance: "" });
+        setForm({ itemName: "", totalQuantity: "", underMaintenance: "", deficit: "" });
         setEditId(null);
         setShowForm(false);
         await fetchItems();
@@ -88,14 +89,14 @@ export default function InventoryView() {
 
   const startEdit = (item) => {
     setEditId(item.itemId);
-    setForm({ itemName: item.itemName, totalQuantity: String(item.totalQuantity), underMaintenance: String(item.underMaintenance) });
+    setForm({ itemName: item.itemName, totalQuantity: String(item.totalQuantity), underMaintenance: String(item.underMaintenance), deficit: String(item.deficit || 0) });
     setShowForm(true);
   };
 
   const cancelForm = () => {
     setShowForm(false);
     setEditId(null);
-    setForm({ itemName: "", totalQuantity: "", underMaintenance: "" });
+    setForm({ itemName: "", totalQuantity: "", underMaintenance: "", deficit: "" });
   };
 
   const handleDelete = async () => {
@@ -145,10 +146,10 @@ export default function InventoryView() {
             items: items.map((item) => ({
               name: item.itemName, expected: item.totalQuantity,
               actual: item.totalQuantity - (item.underMaintenance || 0),
+              deficit: (item.deficit || 0) + (item.underMaintenance || 0),
               rented: rentedMap[item.itemId] || 0,
-              available: Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0)),
-              deficit: item.underMaintenance,
-              status: (item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "غير متوفر" : "متوفر",
+              available: Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)),
+              status: (item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "غير متوفر" : "متوفر",
             })),
           })}>🖨️ طباعة الجرد</button>
         </div>
@@ -175,6 +176,10 @@ export default function InventoryView() {
                 <div className="form-group">
                   <label>تحت الصيانة</label>
                   <input type="number" value={form.underMaintenance} onChange={(e) => setForm({ ...form, underMaintenance: e.target.value })} placeholder="0" className="form-control" />
+                </div>
+                <div className="form-group">
+                  <label>عجز</label>
+                  <input type="number" value={form.deficit} onChange={(e) => setForm({ ...form, deficit: e.target.value })} placeholder="0" className="form-control" />
                 </div>
               </div>
               <div className="form-actions">
@@ -204,6 +209,7 @@ export default function InventoryView() {
                     <th>الصنف</th>
                     <th>الإجمالي</th>
                     <th>تحت الصيانة</th>
+                    <th>العجز</th>
                     <th>المتاح</th>
                     <th>المؤجر</th>
                     <th>المتوفر</th>
@@ -222,14 +228,17 @@ export default function InventoryView() {
                         {item.underMaintenance > 0 ? <span className="text-red">{item.underMaintenance}</span> : item.underMaintenance}
                       </td>
                       <td className="cell-center">
-                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0)) < 5 ? "low" : "ok"}`}>
-                          {item.totalQuantity - (item.underMaintenance || 0)}
+                        {item.deficit > 0 ? <span className="text-red">{item.deficit}</span> : item.deficit || 0}
+                      </td>
+                      <td className="cell-center">
+                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) <= 0 ? "out" : (item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0)) < 5 ? "low" : "ok"}`}>
+                          {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0))}
                         </span>
                       </td>
                       <td className="cell-center">{rentedMap[item.itemId] > 0 ? rentedMap[item.itemId] : "0"}</td>
                       <td className="cell-center">
-                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "out" : "ok"}`}>
-                          {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (rentedMap[item.itemId] || 0))}
+                        <span className={`avail-badge ${(item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "out" : "ok"}`}>
+                          {Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0))}
                         </span>
                       </td>
                       <td className="cell-center">

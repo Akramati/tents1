@@ -6,7 +6,7 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 const NEW_TABS = [
   {
     title: "Inventory_Stock",
-    headers: ["ItemID", "ItemName", "TotalQuantity", "UnderMaintenance"],
+    headers: ["ItemID", "ItemName", "TotalQuantity", "UnderMaintenance", "Deficit"],
   },
   {
     title: "Asset_Maintenance_Logs",

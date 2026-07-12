@@ -17,7 +17,7 @@ export async function GET(request) {
     // Get all inventory items
     const invRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Inventory_Stock!A2:D",
+      range: "Inventory_Stock!A2:E",
     });
     const invRows = invRes.data.values || [];
     const inventory = invRows.map((row) => ({
@@ -25,6 +25,7 @@ export async function GET(request) {
       itemName: row[1] || "",
       totalQuantity: parseInt(row[2] || 0),
       underMaintenance: parseInt(row[3] || 0),
+      deficit: parseInt(row[4] || 0),
     }));
 
     // Determine the date range to check
@@ -109,7 +110,7 @@ export async function GET(request) {
       return {
         ...item,
         rentedOnDate: rented,
-        availableQuantity: item.totalQuantity - item.underMaintenance - rented,
+        availableQuantity: item.totalQuantity - item.underMaintenance - item.deficit - rented,
       };
     });
 
