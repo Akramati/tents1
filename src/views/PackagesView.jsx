@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { TENT_WIDTHS } from "@/lib/utils";
 import ConfirmModal from "@/components/ConfirmModal";
+import BottomSheet from "@/components/BottomSheet";
 
 export default function PackagesView() {
   const { print, setErrorMsg } = useApp();
@@ -10,7 +11,6 @@ export default function PackagesView() {
   const [packages, setPackages] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [expandedPkg, setExpandedPkg] = useState(null);
-  const [openMenu, setOpenMenu] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [form, setForm] = useState({ packageName: "", widths: {} });
   const [editMode, setEditMode] = useState(null);
@@ -292,7 +292,7 @@ export default function PackagesView() {
       </div>
 
       {/* Tent form */}
-      {showForm && activeTab === "tent" && (
+      <BottomSheet show={showForm && activeTab === "tent"} title={editMode ? `✏️ تعديل باقة: ${editMode}` : "➕ إضافة باقة خيام جديدة"} onClose={() => { setShowForm(false); setEditMode(null); setForm({ packageName: "", widths: {} }); }}>
         <form onSubmit={handleTentSubmit} className="inv-form">
           {editMode && <div className="alert alert-warning">⚠️ هذا التعديل سيؤثر على الحجوزات المستقبلية فقط. الحجوزات الحالية لا تتأثر.</div>}
           <div className="form-grid mini-grid">
@@ -342,10 +342,10 @@ export default function PackagesView() {
             </button>
           </div>
         </form>
-      )}
+      </BottomSheet>
 
       {/* Flexible form */}
-      {showForm && activeTab === "flex" && (
+      <BottomSheet show={showForm && activeTab === "flex"} title={flexEditPkg ? `✏️ تعديل: ${flexEditPkg}` : "➕ إضافة باقة مرنة"} onClose={() => { setShowForm(false); resetFlexForm(); }}>
         <form onSubmit={handleFlexSubmit} className="inv-form">
           <div className="form-grid mini-grid">
             <div className="form-group full-width">
@@ -466,7 +466,7 @@ export default function PackagesView() {
             </button>
           </div>
         </form>
-      )}
+      </BottomSheet>
 
       {/* Tent packages list */}
       {activeTab === "tent" && (
@@ -508,14 +508,9 @@ export default function PackagesView() {
                         </td>
                         <td>{totalItems}</td>
                         <td className="actions-cell">
-                          <div className="three-dots-wrapper">
-                            <button className="three-dots-btn" onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === pkg.packageName ? null : pkg.packageName); }}>⋮</button>
-                            {openMenu === pkg.packageName && (
-                              <div className="dots-menu">
-                                <button className="dots-menu-item" onClick={() => { editPackage(pkg); setOpenMenu(null); }}>✏️ تعديل</button>
-                                <button className="dots-menu-item danger" onClick={() => { setOpenMenu(null); setDeleteConfirm({ type: "tent", pkg }); }}>🗑️ حذف</button>
-                              </div>
-                            )}
+                          <div className="action-buttons-direct">
+                            <button type="button" className="btn-icon" onClick={() => editPackage(pkg)} title="تعديل">✏️</button>
+                            <button type="button" className="btn-icon danger" onClick={() => setDeleteConfirm({ type: "tent", pkg })} title="حذف">🗑️</button>
                           </div>
                         </td>
                       </tr>
@@ -523,7 +518,6 @@ export default function PackagesView() {
                   })}
                 </tbody>
               </table>
-              {openMenu && <div className="menu-backdrop" onClick={() => setOpenMenu(null)} />}
             </>
           )}
         </div>
@@ -556,21 +550,15 @@ export default function PackagesView() {
                       </td>
                       <td>{flexTotalItems(pkg)}</td>
                       <td className="actions-cell">
-                        <div className="three-dots-wrapper">
-                          <button className="three-dots-btn" onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === `${pkg.typeName}::${pkg.packageName}` ? null : `${pkg.typeName}::${pkg.packageName}`); }}>⋮</button>
-                          {openMenu === `${pkg.typeName}::${pkg.packageName}` && (
-                            <div className="dots-menu">
-                              <button className="dots-menu-item" onClick={() => { editFlexPackage(pkg); setOpenMenu(null); }}>✏️ تعديل</button>
-                              <button className="dots-menu-item danger" onClick={() => { setOpenMenu(null); setDeleteConfirm({ type: "flex", pkg }); }}>🗑️ حذف</button>
-                            </div>
-                          )}
+                        <div className="action-buttons-direct">
+                          <button type="button" className="btn-icon" onClick={() => editFlexPackage(pkg)} title="تعديل">✏️</button>
+                          <button type="button" className="btn-icon danger" onClick={() => setDeleteConfirm({ type: "flex", pkg })} title="حذف">🗑️</button>
                         </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {openMenu && <div className="menu-backdrop" onClick={() => setOpenMenu(null)} />}
             </>
           )}
         </div>
