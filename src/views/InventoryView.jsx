@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import ConfirmModal from "@/components/ConfirmModal";
+import BottomSheet from "@/components/BottomSheet";
 
 export default function InventoryView({ subTab = "quantities" }) {
   const { print } = useApp();
@@ -159,7 +160,7 @@ export default function InventoryView({ subTab = "quantities" }) {
 
       {tab === "stock" ? (
         <>
-          {showForm && (
+          <BottomSheet show={showForm} title={editId ? "✏️ تعديل صنف" : "➕ إضافة صنف جديد"} onClose={cancelForm}>
             <form onSubmit={handleSubmit} className="inv-form">
               <div className="form-grid mini-grid">
                 <div className="form-group">
@@ -168,15 +169,15 @@ export default function InventoryView({ subTab = "quantities" }) {
                 </div>
                 <div className="form-group">
                   <label>الكمية الإجمالية</label>
-                  <input type="number" value={form.totalQuantity} onChange={(e) => setForm({ ...form, totalQuantity: e.target.value })} placeholder="0" className="form-control" />
+                  <input type="number" inputMode="numeric" value={form.totalQuantity} onChange={(e) => setForm({ ...form, totalQuantity: e.target.value })} placeholder="0" className="form-control" />
                 </div>
                 <div className="form-group">
                   <label>تحت الصيانة</label>
-                  <input type="number" value={form.underMaintenance} onChange={(e) => setForm({ ...form, underMaintenance: e.target.value })} placeholder="0" className="form-control" />
+                  <input type="number" inputMode="numeric" value={form.underMaintenance} onChange={(e) => setForm({ ...form, underMaintenance: e.target.value })} placeholder="0" className="form-control" />
                 </div>
                 <div className="form-group">
                   <label>عجز</label>
-                  <input type="number" value={form.deficit} onChange={(e) => setForm({ ...form, deficit: e.target.value })} placeholder="0" className="form-control" />
+                  <input type="number" inputMode="numeric" value={form.deficit} onChange={(e) => setForm({ ...form, deficit: e.target.value })} placeholder="0" className="form-control" />
                 </div>
               </div>
               <div className="form-actions">
@@ -186,7 +187,7 @@ export default function InventoryView({ subTab = "quantities" }) {
                 <button type="button" className="btn btn-gold" onClick={cancelForm}>إلغاء</button>
               </div>
             </form>
-          )}
+          </BottomSheet>
 
           {loading ? (
             <div className="loading-spinner-container"><div className="loading-spinner"></div><p>جاري تحميل المخزون...</p></div>
