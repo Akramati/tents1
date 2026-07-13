@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
+import SuppliersView from "@/views/SuppliersView";
+import PaymentsView from "@/views/PaymentsView";
 
 const CC = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
 
@@ -31,6 +33,7 @@ export default function TransactionsView() {
   const [opType, setOpType] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [subTab, setSubTab] = useState("transactions"); // transactions | suppliers | payments
 
   // Form fields
   const [amount, setAmount] = useState("");
@@ -589,6 +592,28 @@ export default function TransactionsView() {
         <h2>💰 العمليات المالية</h2>
       </div>
 
+      {/* Sub-tabs: العمليات المالية | إدارة العملاء والموردين | سندات الصرف */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+        <button className={`btn ${subTab === "transactions" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setSubTab("transactions")}
+          style={{ padding: "0.5rem 1.25rem", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: "pointer", border: "none", fontSize: "0.85rem" }}>
+          💳 العمليات المالية
+        </button>
+        <button className={`btn ${subTab === "suppliers" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setSubTab("suppliers")}
+          style={{ padding: "0.5rem 1.25rem", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: "pointer", border: "none", fontSize: "0.85rem" }}>
+          👥 العملاء والموردون
+        </button>
+        <button className={`btn ${subTab === "payments" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setSubTab("payments")}
+          style={{ padding: "0.5rem 1.25rem", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: "pointer", border: "none", fontSize: "0.85rem" }}>
+          🧾 سندات الصرف
+        </button>
+      </div>
+
+      {subTab === "suppliers" && <SuppliersView />}
+      {subTab === "payments" && <PaymentsView />}
+      {subTab === "transactions" && (<>
       {/* Category selector */}
       <div className="tx-category-row">
         {CATEGORIES.map(c => (
@@ -2003,6 +2028,7 @@ ${rentEntries.map((e, i) => {
           font-weight: 600;
         }
       `}</style>
+      </>}
     </section>
   );
 }

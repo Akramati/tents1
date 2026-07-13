@@ -4,13 +4,11 @@ import { useApp } from "@/contexts/AppContext";
 import QueryView from "@/views/QueryView";
 import CreateBookingView from "@/views/CreateBookingView";
 import FieldOpsView from "@/views/FieldOpsView";
-import SuppliersView from "@/views/SuppliersView";
 import InventoryView from "@/views/InventoryView";
 import ProfitLossView from "@/views/ProfitLossView";
 import PackagesView from "@/views/PackagesView";
 import ExpensesView from "@/views/ExpensesView";
 import TransactionsView from "@/views/TransactionsView";
-import PaymentsView from "@/views/PaymentsView";
 import PaymentView from "@/views/PaymentView";
 import DashboardView from "@/views/DashboardView";
 import CancelView from "@/views/CancelView";
@@ -22,16 +20,14 @@ const OP_VIEWS = [
   { key: "query", label: "الحجوزات والاستعلام", icon: "🔍", adminOnly: false },
   { key: "create", label: "حجز جديد", icon: "➕", adminOnly: false },
   { key: "fieldops", label: "حركة الميدان", icon: "🚛", adminOnly: false },
-  { key: "suppliers", label: "العملاء والموردين", icon: "👥", adminOnly: false },
   { key: "inventory", label: "حالة المخزون", icon: "📦", adminOnly: false },
   { key: "divider", label: "", icon: "", adminOnly: true, divider: true },
+  { key: "transactions", label: "العمليات المالية", icon: "💰", adminOnly: true, sub: "قيود، إيجار، سندات صرف، موردون" },
   { key: "packages", label: "الباقات", icon: "🎁", adminOnly: true },
-  { key: "expenses", label: "المصروفات", icon: "💸", adminOnly: true, sub: "شجرة حسابات، تحويل، تسوية" },
-  { key: "transactions", label: "المركز المالي", icon: "💰", adminOnly: true, sub: "قيود، إيجار، سندات، رواتب" },
-  { key: "payments", label: "سندات الصرف", icon: "💳", adminOnly: true },
   { key: "admin-config", label: "الإعدادات", icon: "⚙️", adminOnly: true, sub: "الأنواع والرسائل والحقول" },
   { key: "admin-finance", label: "الفروع والتكاليف", icon: "🏛️", adminOnly: true, sub: "الفروع ومراكز التكلفة" },
   { key: "admin-reports", label: "التقارير المالية", icon: "📊", adminOnly: true, sub: "قائمة الدخل والميزانية" },
+  { key: "accounting", label: "إدارة الحسابات", icon: "📒", adminOnly: true, sub: "شجرة حسابات، تحويل، تسوية" },
   { key: "divider2", label: "", icon: "", adminOnly: false, divider: true },
   { key: "dashboard", label: "لوحة المعلومات", icon: "📈", adminOnly: false, sub: "ملخص ونظرة سريعة" },
   { key: "cancel", label: "إدارة الإلغاء", icon: "❌", adminOnly: false, sub: "إلغاء الحجوزات وتسويتها" },
@@ -118,16 +114,14 @@ export default function OperationsWorkspace() {
         {activeView === "query" && <QueryView />}
         {activeView === "create" && <CreateBookingView />}
         {activeView === "fieldops" && <FieldOpsView />}
-        {activeView === "suppliers" && <SuppliersView />}
         {activeView === "inventory" && <InventoryView />}
         {isAdmin && activeView === "packages" && <PackagesView />}
-        {isAdmin && activeView === "expenses" && <ExpensesView />}
         {isAdmin && activeView === "transactions" && <TransactionsView />}
-        {isAdmin && activeView === "payments" && <PaymentsView />}
         {isAdmin && activeView === "profitloss" && <ProfitLossView data={pnlData} loading={pnlLoading} />}
         {isAdmin && activeView === "admin-config" && <AdminConfig embedded />}
         {isAdmin && activeView === "admin-finance" && <AdminFinance embedded />}
         {isAdmin && activeView === "admin-reports" && <AdminReports embedded />}
+        {isAdmin && activeView === "accounting" && <ExpensesView />}
         {activeView === "dashboard" && <DashboardView onNavigate={(key) => selectView(key)} />}
         {activeView === "cancel" && <CancelView />}
         {activeView === "payment" && <PaymentView />}

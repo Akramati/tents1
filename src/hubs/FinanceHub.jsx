@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import SuppliersView from "@/views/SuppliersView";
 import ExpensesView from "@/views/ExpensesView";
 import TransactionsView from "@/views/TransactionsView";
-import PaymentsView from "@/views/PaymentsView";
 
 export default function FinanceHub() {
   const [activeTab, setActiveTab] = useState("suppliers");
@@ -15,33 +14,26 @@ export default function FinanceHub() {
           className={`inv-tab ${activeTab === "suppliers" ? "active" : ""}`} 
           onClick={() => setActiveTab("suppliers")}
         >
-          👥 الموردون
-        </button>
-        <button 
-          className={`inv-tab ${activeTab === "expenses" ? "active" : ""}`} 
-          onClick={() => setActiveTab("expenses")}
-        >
-          💸 المصروفات
+          👥 الموردون والعملاء
         </button>
         <button 
           className={`inv-tab ${activeTab === "transactions" ? "active" : ""}`} 
           onClick={() => setActiveTab("transactions")}
         >
-          💰 المركز المالي
+          💰 العمليات المالية
         </button>
         <button 
-          className={`inv-tab ${activeTab === "payments" ? "active" : ""}`} 
-          onClick={() => setActiveTab("payments")}
+          className={`inv-tab ${activeTab === "expenses" ? "active" : ""}`} 
+          onClick={() => setActiveTab("expenses")}
         >
-          💳 سندات الصرف
+          📒 إدارة الحسابات
         </button>
       </div>
 
       <div className="hub-content">
         {activeTab === "suppliers" && <SuppliersView />}
-        {activeTab === "expenses" && <ExpensesView />}
         {activeTab === "transactions" && <TransactionsView />}
-        {activeTab === "payments" && <PaymentsView />}
+        {activeTab === "expenses" && <ExpensesView />}
       </div>
     </div>
   );
