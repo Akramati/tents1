@@ -1,14 +1,15 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Truck, Search, PlusCircle, ArrowRight } from "lucide-react";
+import { Truck, Search, PlusCircle, ArrowRight, LayoutDashboard } from "lucide-react";
 import FieldOpsView from "@/views/FieldOpsView";
 import QueryView from "@/views/QueryView";
 import CreateBookingView from "@/views/CreateBookingView";
+import OperationsWorkspace from "@/views/OperationsWorkspace";
 import { useApp } from "@/contexts/AppContext";
 
 export default function FieldHub() {
   const { view, setView } = useApp();
-  const [activeTab, setActiveTab] = useState("menu"); // "menu" | "query" | "create" | "fieldops"
+  const [activeTab, setActiveTab] = useState("menu"); // "menu" | "query" | "create" | "fieldops" | "operations"
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -154,6 +155,33 @@ export default function FieldHub() {
                 <p style={{ margin: 0, opacity: 0.7, fontSize: "0.9rem" }}>إدارة حركة التجهيز، التحميل، التركيب، الفك، وحساب التوالف</p>
               </div>
             </button>
+
+            {/* 4. كرت لوحة العمليات الكاملة */}
+            <button 
+              onClick={() => setActiveTab("operations")}
+              className="glass hover-scale" 
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "1rem", 
+                padding: "1.5rem", 
+                borderRadius: "16px", 
+                border: "1px solid rgba(255,255,255,0.08)", 
+                background: "rgba(255,255,255,0.02)", 
+                textAlign: "right", 
+                cursor: "pointer", 
+                width: "100%", 
+                color: "inherit" 
+              }}
+            >
+              <div style={{ background: "rgba(139,92,246,0.1)", padding: "1rem", borderRadius: "12px", color: "#8b5cf6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <LayoutDashboard size={32} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: "1.2rem", margin: "0 0 0.25rem", fontWeight: "bold" }}>💼 لوحة العمليات الكاملة</h3>
+                <p style={{ margin: 0, opacity: 0.7, fontSize: "0.9rem" }}>الوصول للقائمة الجانبية وكافة التبويبات والخيارات الإدارية</p>
+              </div>
+            </button>
           </div>
         </div>
       ) : (
@@ -161,6 +189,7 @@ export default function FieldHub() {
           {activeTab === "query" && <QueryView />}
           {activeTab === "create" && <CreateBookingView />}
           {activeTab === "fieldops" && <FieldOpsView />}
+          {activeTab === "operations" && <OperationsWorkspace />}
         </div>
       )}
     </div>
