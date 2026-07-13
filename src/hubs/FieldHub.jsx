@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Package, Truck, Wrench, Settings, LayoutDashboard } from "lucide-react";
+import { Truck, LayoutDashboard } from "lucide-react";
 import FieldOpsView from "@/views/FieldOpsView";
 import OperationsWorkspace from "@/views/OperationsWorkspace";
 
@@ -24,8 +24,6 @@ export default function FieldHub() {
   const tabs = [
     { key: "fieldops", label: "🚛 عمليات الميدان", icon: Truck },
     { key: "operations", label: "💼 لوحة العمليات", icon: LayoutDashboard },
-    { key: "packages", label: "🎁 الباقات", icon: Package },
-    { key: "maintenance", label: "🔧 الصيانة", icon: Wrench },
   ];
 
   if (loading) return <div className="container" style={{ padding: "2rem", textAlign: "center" }}><p>جاري التحميل...</p></div>;
@@ -60,62 +58,7 @@ export default function FieldHub() {
       <div className="hub-content">
         {activeTab === "fieldops" && <FieldOpsView />}
         {activeTab === "operations" && <OperationsWorkspace />}
-        {activeTab === "packages" && <PackagesEmbedded />}
-        {activeTab === "maintenance" && <MaintenanceEmbedded />}
       </div>
     </div>
-  );
-}
-
-function PackagesEmbedded() {
-  const [packages, setPackages] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/packages").then(r => r.json()).then(d => { if (d.success) setPackages(d.packages || []); setLoading(false); });
-  }, []);
-
-  if (loading) return <div style={{ padding: "2rem", textAlign: "center" }}>جاري التحميل...</div>;
-
-  return (
-    <section className="inventory-section glass">
-      <div className="section-title-row">
-        <h2>🎁 إدارة الباقات</h2>
-        <a href="/admin/config" className="btn btn-primary" style={{ textDecoration: "none" }}>⚙️ إعدادات كاملة</a>
-      </div>
-      <div className="inv-table-wrapper">
-        {packages.length === 0 ? (
-          <p className="empty-state">لا توجد باقات</p>
-        ) : (
-          <table className="inv-table">
-            <thead><tr><th>اسم الباقة</th><th>العروض</th><th>الأصناف</th></tr></thead>
-            <tbody>
-              {packages.map(pkg => {
-                const widths = Object.keys(pkg.widths || {}).sort((a, b) => parseFloat(a) - parseFloat(b));
-                const totalItems = Object.values(pkg.widths || {}).reduce((s, items) => s + items.length, 0);
-                return (
-                  <tr key={pkg.packageName}>
-                    <td><strong>{pkg.packageName}</strong></td>
-                    <td>{widths.map(w => <span key={w} className="pkg-item-tag" style={{ background: "var(--gold)", color: "#000", marginRight: "0.3rem" }}>{w}م</span>)}</td>
-                    <td>{totalItems}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function MaintenanceEmbedded() {
-  return (
-    <section className="inventory-section glass">
-      <div className="section-title-row">
-        <h2>🔧 سجل الصيانة</h2>
-      </div>
-      <p className="empty-state">يظهر تلقائياً عند تسجيل تلف في الأصناف من لوحة العمليات الميدانية.</p>
-    </section>
   );
 }
