@@ -8,7 +8,7 @@ export default function BottomNav() {
 
   const navItems = [
     { name: 'العمليات', path: '/admin/operations', icon: Truck },
-    { name: 'المخزون', path: '/admin/config', icon: Package },
+    { name: 'المخزون', path: '/admin/inventory', icon: Package },
     { name: 'المالية', path: '/admin/finance', icon: DollarSign },
     { name: 'الإدارة', path: '/admin/dashboard', icon: LayoutDashboard },
   ];
