@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import ConfirmModal from "@/components/ConfirmModal";
 
-export default function InventoryView() {
+export default function InventoryView({ subTab = "quantities" }) {
   const { print } = useApp();
   const [tab, setTab] = useState("stock");
   const [items, setItems] = useState([]);
@@ -13,12 +13,9 @@ export default function InventoryView() {
   const [form, setForm] = useState({ itemName: "", totalQuantity: "", underMaintenance: "", deficit: "" });
   const [mtLogs, setMtLogs] = useState([]);
   const [mtLoading, setMtLoading] = useState(false);
-  const [menuOpenId, setMenuOpenId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-
   const [costMap, setCostMap] = useState({});
   const [rentedMap, setRentedMap] = useState({});
-  const [subTab, setSubTab] = useState("quantities");
 
   const fetchItems = async () => {
     setLoading(true);
@@ -107,7 +104,6 @@ export default function InventoryView() {
       const data = await res.json();
       if (data.success) {
         setDeleteConfirm(null);
-        setMenuOpenId(null);
         await fetchItems();
       }
     } catch (err) { console.error(err); }
@@ -137,7 +133,7 @@ export default function InventoryView() {
       <div className="section-title-row">
         <h2>📦 إدارة المخزون</h2>
         <div className="btn-group">
-          {!showForm && tab === "stock" && (
+          {!showForm && (
             <button className="btn btn-primary" onClick={() => setShowForm(true)}>➕ إضافة صنف جديد</button>
           )}
           <button className="btn btn-sm btn-renumber" onClick={handleRenumber}>🔢 إعادة ترقيم</button>
@@ -147,9 +143,9 @@ export default function InventoryView() {
             items: items.map((item) => ({
               name: item.itemName, expected: item.totalQuantity,
               actual: item.totalQuantity - (item.underMaintenance || 0),
-              deficit: (item.deficit || 0) + (item.underMaintenance || 0),
               rented: rentedMap[item.itemId] || 0,
               available: Math.max(0, item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)),
+              deficit: (item.deficit || 0) + (item.underMaintenance || 0),
               status: (item.totalQuantity - (item.underMaintenance || 0) - (item.deficit || 0) - (rentedMap[item.itemId] || 0)) <= 0 ? "غير متوفر" : "متوفر",
             })),
           })}>🖨️ طباعة الجرد</button>
@@ -160,13 +156,6 @@ export default function InventoryView() {
         <button className={`inv-tab ${tab === "stock" ? "active" : ""}`} onClick={() => setTab("stock")}>🏚️ المخزون</button>
         <button className={`inv-tab ${tab === "maintenance" ? "active" : ""}`} onClick={() => { setTab("maintenance"); fetchMtLogs(); }}>🔧 سجل الصيانة</button>
       </div>
-
-      {tab === "stock" && (
-        <div className="inv-sub-tabs">
-          <button type="button" className={`btn btn-sm ${subTab === "quantities" ? "btn-primary" : "btn-ghost"}`} onClick={() => setSubTab("quantities")}>📊 الكميات والجرد</button>
-          <button type="button" className={`btn btn-sm ${subTab === "finance" ? "btn-primary" : "btn-ghost"}`} onClick={() => setSubTab("finance")}>💰 التكاليف والمالية</button>
-        </div>
-      )}
 
       {tab === "stock" ? (
         <>
