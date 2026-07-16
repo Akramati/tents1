@@ -10,51 +10,58 @@ function parseICS(icsText) {
     const getVal = (key) => {
       const lines = block.split("\n");
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].startsWith(key + ":")) return lines[i].slice(key.length + 1).trim();
-        if (lines[i].startsWith(key + ";")) {
-          const colonIdx = lines[i].indexOf(":");
-          if (colonIdx !== -1) return lines[i].slice(colonIdx + 1).trim();
+        const line = lines[i].replace(/\r$/, "");
+        if (line.startsWith(key + ":")) return line.slice(key.length + 1).trim();
+        if (line.startsWith(key + ";")) {
+          const colonIdx = line.indexOf(":");
+          if (colonIdx !== -1) return line.slice(colonIdx + 1).trim();
         }
       }
       return "";
     };
 
-    const uid = getVal("UID");
+    const uid = getVal("UID") || `ev-${events.length}`;
     const summary = getVal("SUMMARY");
     const description = getVal("DESCRIPTION");
     const location = getVal("LOCATION");
 
-    const dtStart = getVal("DTSTART");
-    const dtEnd = getVal("DTEND");
+    let dtStart = getVal("DTSTART");
+    let dtEnd = getVal("DTEND");
+
+    // Handle folded lines (continuation with whitespace)
+    const lines = block.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].replace(/\r$/, "");
+      if (!dtStart && l.startsWith("DTSTART")) dtStart = l;
+      if (!dtEnd && l.startsWith("DTEND")) dtEnd = l;
+    }
 
     let startDate = "";
     let endDate = "";
-    if (dtStart.startsWith(";VALUE=DATE:")) {
-      startDate = dtStart.split(":")[1]?.slice(0, 10) || "";
-      startDate = startDate.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
-    } else if (dtStart.length === 8 && !isNaN(dtStart)) {
-      startDate = dtStart.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
-    } else if (dtStart) {
-      startDate = dtStart.slice(0, 10);
-    }
 
-    if (dtEnd.startsWith(";VALUE=DATE:")) {
-      endDate = dtEnd.split(":")[1]?.slice(0, 10) || "";
-      endDate = endDate.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
-    } else if (dtEnd.length === 8 && !isNaN(dtEnd)) {
-      endDate = dtEnd.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
-    } else if (dtEnd) {
-      endDate = dtEnd.slice(0, 10);
-    }
+    const parseDate = (val) => {
+      // Strip property params like ;VALUE=DATE:
+      const afterSemi = val.replace(/^DTSTART(?:;[^:]*)?:/, "").replace(/^DTEND(?:;[^:]*)?:/, "");
+      const clean = afterSemi || val;
+      // YYYYMMDD format
+      const m = clean.match(/(\d{4})(\d{2})(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      // ISO format
+      if (clean.match(/^\d{4}-\d{2}-\d{2}/)) return clean.slice(0, 10);
+      return "";
+    };
+
+    startDate = parseDate(dtStart);
+    endDate = parseDate(dtEnd) || startDate;
 
     if (startDate) {
       events.push({
-        eventId: uid || `ev-${events.length}`,
-        summary: decodeURIComponent(summary.replace(/\\,/g, ",")),
-        description: decodeURIComponent(description.replace(/\\,/g, ",") || ""),
+        eventId: uid,
+        summary: summary.replace(/\\,/g, ",").replace(/\\n/g, "\n"),
+        description: description.replace(/\\,/g, ",").replace(/\\n/g, "\n"),
         startDate,
-        endDate: endDate || startDate,
-        location: decodeURIComponent(location.replace(/\\,/g, ",") || ""),
+        endDate,
+        location: location.replace(/\\,/g, ","),
       });
     }
   }
@@ -74,14 +81,28 @@ export async function POST(request) {
     }
 
     if (icsUrl) {
-      const res = await fetch(icsUrl, { headers: { "Accept": "text/calendar" } });
+      const res = await fetch(icsUrl, {
+        headers: {
+          "Accept": "text/calendar, */*",
+          "User-Agent": "HappyLand-Booking-System/1.0",
+        },
+      });
       if (!res.ok) {
-        return NextResponse.json({
-          success: false,
-          error: "فشل تحميل ملف ICS من الرابط. تأكد من صحة الرابط.",
-        }, { status: 400 });
+        let msg = "فشل تحميل ملف ICS من الرابط.";
+        if (res.status === 403 || res.status === 401) {
+          msg += " الرابط يتطلب صلاحية أو أن التقويم غير عام. جرب:\n• الرابط السري بتنسيق iCal من إعدادات التقويم\n• أو اجعل التقويم عاماً (public)";
+        } else if (res.status === 404) {
+          msg += " الرابط غير صحيح.";
+        }
+        return NextResponse.json({ success: false, error: msg }, { status: 400 });
       }
       const text = await res.text();
+      if (!text.includes("BEGIN:VCALENDAR") && !text.includes("BEGIN:VEVENT")) {
+        return NextResponse.json({
+          success: false,
+          error: "الرابط لا يحتوي على بيانات تقويم صالحة. استخدم:\n• الرابط السري بتنسيق iCal من إعدادات التقويم\n• أو البريد الإلكتروني للتقويم (إذا كان عاماً)\n• أو رابط التضمين (embed) من جوجل كاليندر",
+        }, { status: 400 });
+      }
       const events = parseICS(text);
       return NextResponse.json({ success: true, events });
     }

@@ -73,13 +73,18 @@ export default function CalendarView() {
     return { total, revenue, paid, remaining };
   }, [filteredBookings]);
 
-  const getIcsEmbedUrl = (url) => {
-    try {
-      const u = new URL(url);
-      const calMatch = u.pathname.match(/ical\/(.+?)\//);
-      if (calMatch) return `https://calendar.google.com/calendar/embed?src=${calMatch[1]}&ctz=Asia/Riyadh`;
-      return null;
-    } catch { return null; }
+  const getIcsEmbedUrl = () => null;
+
+  const normalizeUrl = (input) => {
+    const trimmed = input.trim();
+    // Already an ICS URL
+    if (trimmed.includes("/basic.ics") || trimmed.includes("/default.ics")) return trimmed;
+    // Google Calendar embed URL: extract the email
+    const embedMatch = trimmed.match(/src=([^&]+)/);
+    if (embedMatch) return `https://calendar.google.com/calendar/ical/${encodeURIComponent(decodeURIComponent(embedMatch[1]))}/public/basic.ics`;
+    // Plain email
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return `https://calendar.google.com/calendar/ical/${encodeURIComponent(trimmed)}/public/basic.ics`;
+    return trimmed;
   };
 
   const persistUrls = (urls) => {
@@ -106,10 +111,12 @@ export default function CalendarView() {
 
   const handleSaveUrl = () => {
     if (!newIcsUrl.trim()) return;
-    const updated = [...savedUrls.filter(u => u.url !== newIcsUrl.trim()), { url: newIcsUrl.trim() }];
+    const normalized = normalizeUrl(newIcsUrl.trim());
+    if (normalized !== newIcsUrl.trim()) setNewIcsUrl(normalized);
+    const updated = [...savedUrls.filter(u => u.url !== normalized), { url: normalized }];
     persistUrls(updated);
     setNewIcsUrl("");
-    fetchExtEvents(newIcsUrl.trim());
+    fetchExtEvents(normalized);
   };
 
   const handleDeleteUrl = (url) => {
@@ -256,17 +263,10 @@ export default function CalendarView() {
 
         {/* Add new URL bar */}
         <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.5rem" }}>
-          <input className="form-control" dir="ltr" placeholder="الصق رابط ICS (الرابط السري بتنسيق iCal)..." value={newIcsUrl} onChange={e => setNewIcsUrl(e.target.value)}
+          <input className="form-control" dir="ltr" placeholder="رابط ICS أو رابط التضمين (embed) أو البريد الإلكتروني للتقويم..." value={newIcsUrl} onChange={e => setNewIcsUrl(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") handleSaveUrl(); }} style={{ fontSize: "0.82rem" }} />
           <button className="btn btn-primary" onClick={handleSaveUrl} disabled={!newIcsUrl.trim() || extLoading}>حفظ وجلب</button>
         </div>
-
-        {/* Embedded preview if available */}
-        {savedUrls.length > 0 && getIcsEmbedUrl(savedUrls[0].url) && (
-          <div style={{ marginBottom: "0.75rem" }}>
-            <iframe src={getIcsEmbedUrl(savedUrls[0].url)} style={{ width: "100%", height: "350px", border: "none", borderRadius: "8px", background: "#fff" }} />
-          </div>
-        )}
 
         {extLoading && <div style={{ textAlign: "center", padding: "1rem", opacity: 0.5 }}>جاري جلب الأحداث...</div>}
         {extError && <div className="alert alert-danger" style={{ fontSize: "0.85rem", padding: "0.5rem" }}>{extError}</div>}
