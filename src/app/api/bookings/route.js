@@ -311,11 +311,11 @@ export async function POST(request) {
           const endDateTime = new Date(effectiveEnd);
           endDateTime.setDate(endDateTime.getDate() + 1);
 
-          const calDesc = `رقم الحجز: ${bookingId}\nرقم الجوال: ${customerPhone}\nالمبلغ الإجمالي: ${total}\nالمتبقي: ${remaining}\nنوع الحجز: ${bookingType}\nالباقة: ${packageUsed}\nعرض الخيمة: ${tentWidth}م\nطول الخيمة: ${tentLength}م\nعدد الخيام: ${tentCount}\nنوع الفعالية: ${eventType}\nالفترة: ${shift}\nنوع التسعير: ${pricingType}\nنوع الضمان: ${depositType}\nالضامن: ${guarantorName}\nجوال الضامن: ${guarantorPhone}\nهوية الضامن: ${guarantorId}\nتكاليف النقل: ${transResponsibility}\nمبلغ النقل: ${transCost}`;
+          const calDesc = `رقم الحجز: ${bookingId}\nالعميل: ${customerName}\nرقم الجوال: ${customerPhone}\nالعنوان: ${customerAddress}\nالمبلغ الإجمالي: ${total}\nالمبلغ المقدم: ${paid}\nالمتبقي: ${remaining}\nنوع الحجز: ${bookingType}\nتاريخ الحجز: ${timestamp}\nالباقة: ${packageUsed}\nعرض الخيمة: ${tentWidth}م\nطول الخيمة: ${tentLength}م\nعدد الخيام: ${tentCount}\nنوع الفعالية: ${eventType}\nالفترة: ${shift}\nنوع التسعير: ${pricingType}\nنوع الضمان: ${depositType}\nالضامن: ${guarantorName}\nجوال الضامن: ${guarantorPhone}\nهوية الضامن: ${guarantorId}\nتكاليف النقل: ${transResponsibility}\nمبلغ النقل: ${transCost}`;
           await calendar.events.insert({
             calendarId: CALENDAR_ID,
             requestBody: {
-              summary: bookingType === "حجز الصالة" ? `حجز صالة - ${customerName}` : `حجز خيمة - ${customerName}`,
+              summary: `${bookingType === "حجز الصالة" ? "🏛️" : "⛺"} ${customerName} - ${bookingType}`,
               description: calDesc,
               start: { date: startDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
               end: { date: endDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
@@ -324,6 +324,8 @@ export async function POST(request) {
                   bookingId,
                   pricingType, depositType, guarantorName, guarantorPhone, guarantorId,
                   transResponsibility, transCost: transCost.toString(),
+                  customerAddress, paidAmount: paid.toString(),
+                  bookingDate: timestamp, customerIdNumber,
                 },
               },
             },
@@ -689,11 +691,11 @@ export async function PUT(request) {
           const startDateTime = new Date(startDate);
           const endDateTime = new Date(startDate > endDate ? startDate : endDate);
           endDateTime.setDate(endDateTime.getDate() + 1);
-          const calDesc = `رقم الحجز: ${bookingId}\nرقم الجوال: ${customerPhone}\nالمبلغ الإجمالي: ${total}\nالمتبقي: ${remaining}\nنوع الحجز: ${bookingType}\nالباقة: ${packageUsed}\nعرض الخيمة: ${tentWidth}م\nطول الخيمة: ${tentLength}م\nعدد الخيام: ${tentCount}\nنوع الفعالية: ${eventType}\nالفترة: ${shift}\nنوع التسعير: ${pricingType}\nنوع الضمان: ${depositType}\nالضامن: ${guarantorName}\nجوال الضامن: ${guarantorPhone}\nهوية الضامن: ${guarantorId}\nتكاليف النقل: ${transResponsibility}\nمبلغ النقل: ${transCost}`;
+          const calDesc = `رقم الحجز: ${bookingId}\nالعميل: ${customerName}\nرقم الجوال: ${customerPhone}\nالعنوان: ${customerAddress}\nالمبلغ الإجمالي: ${total}\nالمبلغ المقدم: ${paid}\nالمتبقي: ${remaining}\nنوع الحجز: ${bookingType}\nتاريخ الحجز: ${timestamp}\nالباقة: ${packageUsed}\nعرض الخيمة: ${tentWidth}م\nطول الخيمة: ${tentLength}م\nعدد الخيام: ${tentCount}\nنوع الفعالية: ${eventType}\nالفترة: ${shift}\nنوع التسعير: ${pricingType}\nنوع الضمان: ${depositType}\nالضامن: ${guarantorName}\nجوال الضامن: ${guarantorPhone}\nهوية الضامن: ${guarantorId}\nتكاليف النقل: ${transResponsibility}\nمبلغ النقل: ${transCost}`;
           await calendar.events.insert({
             calendarId: CALENDAR_ID,
             requestBody: {
-              summary: bookingType === "حجز الصالة" ? `حجز صالة - ${customerName}` : `حجز خيمة - ${customerName}`,
+              summary: `${bookingType === "حجز الصالة" ? "🏛️" : "⛺"} ${customerName} - ${bookingType}`,
               description: calDesc,
               start: { date: startDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
               end: { date: endDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
@@ -702,6 +704,8 @@ export async function PUT(request) {
                   bookingId,
                   pricingType, depositType, guarantorName, guarantorPhone, guarantorId,
                   transResponsibility, transCost: transCost.toString(),
+                  customerAddress, paidAmount: paid.toString(),
+                  bookingDate: timestamp, customerIdNumber,
                 },
               },
             },

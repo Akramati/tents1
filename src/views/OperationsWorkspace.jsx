@@ -12,6 +12,7 @@ import TransactionsView from "@/views/TransactionsView";
 import PaymentView from "@/views/PaymentView";
 import DashboardView from "@/views/DashboardView";
 import CancelView from "@/views/CancelView";
+import CalendarView from "@/views/CalendarView";
 import AdminConfig from "@/app/admin/config/page";
 import AdminFinance from "@/app/admin/finance/page";
 import AdminReports from "@/app/admin/reports/page";
@@ -30,6 +31,7 @@ const OP_VIEWS = [
   { key: "accounting", label: "إدارة الحسابات", icon: "📒", adminOnly: true, sub: "شجرة حسابات، تحويل، تسوية" },
   { key: "divider2", label: "", icon: "", adminOnly: false, divider: true },
   { key: "dashboard", label: "لوحة المعلومات", icon: "📈", adminOnly: false, sub: "ملخص ونظرة سريعة" },
+  { key: "calendar", label: "📅 التقويم", icon: "📅", adminOnly: false, sub: "عرض وتصدير الحجوزات" },
   { key: "cancel", label: "إدارة الإلغاء", icon: "❌", adminOnly: false, sub: "إلغاء الحجوزات وتسويتها" },
   { key: "payment", label: "تسجيل دفعة", icon: "💰", hidden: true, adminOnly: false },
 ];
@@ -123,6 +125,7 @@ export default function OperationsWorkspace() {
         {isAdmin && activeView === "admin-reports" && <AdminReports embedded />}
         {isAdmin && activeView === "accounting" && <ExpensesView />}
         {activeView === "dashboard" && <DashboardView onNavigate={(key) => selectView(key)} />}
+        {activeView === "calendar" && <CalendarView />}
         {activeView === "cancel" && <CancelView />}
         {activeView === "payment" && <PaymentView />}
       </div>
