@@ -1,8 +1,8 @@
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { formatCurrency, formatDateArabic } from "@/lib/utils";
 
-const SYSTEM_CALENDAR_ID = "0483eb0f27b59560c6b9a14c4c896284349efa9147ce9bef773557e9c7bb3b12@group.calendar.google.com";
+const MAIN_CALENDAR_ID = "0483eb0f27b59560c6b9a14c4c896284349efa9147ce9bef773557e9c7bb3b12@group.calendar.google.com";
 
 export default function CalendarView() {
   const [bookings, setBookings] = useState([]);
@@ -12,53 +12,18 @@ export default function CalendarView() {
   const [expandedBooking, setExpandedBooking] = useState(null);
   const [copySuccess, setCopySuccess] = useState("");
 
-  // Import modal state
-  const [importModal, setImportModal] = useState(false);
-  const [importIcsUrl, setImportIcsUrl] = useState("");
-  const [importedEvents, setImportedEvents] = useState([]);
-  const [importLoading, setImportLoading] = useState(false);
-  const [importError, setImportError] = useState("");
-  const [importSuccess, setImportSuccess] = useState("");
+  // External ICS state
+  const [externalEvents, setExternalEvents] = useState([]);
+  const [extLoading, setExtLoading] = useState(false);
+  const [extError, setExtError] = useState("");
+  const [newIcsUrl, setNewIcsUrl] = useState("");
   const [savedUrls, setSavedUrls] = useState(() => {
     try { return JSON.parse(localStorage.getItem("calSavedUrls") || "[]"); }
     catch { return []; }
   });
-  const fileInputRef = React.useRef(null);
+  const fileInputRef = useRef(null);
 
-  const saveUrl = () => {
-    if (!importIcsUrl.trim()) return;
-    const updated = [...savedUrls.filter(u => u.url !== importIcsUrl.trim()), { url: importIcsUrl.trim(), name: `تقويم ${savedUrls.length + 1}` }];
-    setSavedUrls(updated);
-    localStorage.setItem("calSavedUrls", JSON.stringify(updated));
-    setImportSuccess("✅ تم حفظ الرابط");
-    setTimeout(() => setImportSuccess(""), 2000);
-  };
-
-  const deleteSavedUrl = (url) => {
-    const updated = savedUrls.filter(u => u.url !== url);
-    setSavedUrls(updated);
-    localStorage.setItem("calSavedUrls", JSON.stringify(updated));
-  };
-
-  const fetchSavedUrl = async (url) => {
-    setImportIcsUrl(url);
-    setImportLoading(true);
-    setImportError("");
-    setImportedEvents([]);
-    try {
-      const res = await fetch("/api/calendar/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ icsUrl: url }),
-      });
-      const data = await res.json();
-      if (data.success) setImportedEvents(data.events);
-      else setImportError(data.error || "فشل جلب الأحداث");
-    } catch { setImportError("خطأ في الاتصال"); }
-    setImportLoading(false);
-  };
-
-  // Export modal state
+  // Export modal
   const [exportModal, setExportModal] = useState(false);
   const [exportCalId, setExportCalId] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
@@ -83,6 +48,12 @@ export default function CalendarView() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Auto-fetch first saved URL on mount
+  useEffect(() => {
+    const saved = (() => { try { return JSON.parse(localStorage.getItem("calSavedUrls") || "[]"); } catch { return []; } })();
+    if (saved.length > 0) fetchExtEvents(saved[0].url);
+  }, []);
+
   const months = useMemo(() => {
     const m = new Set();
     bookings.forEach(b => { if (b.startDate) m.add(b.startDate.slice(0, 7)); });
@@ -102,83 +73,57 @@ export default function CalendarView() {
     return { total, revenue, paid, remaining };
   }, [filteredBookings]);
 
-  const downloadICS = () => {
-    let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//HappyLand//Calendar//AR\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\nX-WR-CALNAME:حجوزات هابي لاند\n";
-    filteredBookings.forEach(b => {
-      const ds = b.startDate.replace(/-/g, "");
-      const de = (() => { const d = new Date(b.endDate); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0].replace(/-/g, ""); })();
-      const lines = [
-        `رقم الحجز: ${b.bookingId}`,
-        `العميل: ${b.customerName}`,
-        `الجوال: ${b.customerPhone}`,
-        `العنوان: ${b.customerAddress}`,
-        `المبلغ الإجمالي: ${formatCurrency(b.totalAmount)}`,
-        `المقدم: ${formatCurrency(b.paidAmount)}`,
-        `المتبقي: ${formatCurrency(b.remainingAmount)}`,
-        `نوع الحجز: ${b.bookingType}`,
-        `تاريخ الحجز: ${b.timestamp}`,
-        `نوع الفعالية: ${b.eventType}`,
-        `الفترة: ${b.shift}`,
-      ].filter(l => l.split(": ")[1]);
-      ics += "BEGIN:VEVENT\n" +
-        `UID:${b.bookingId}@happyland\n` +
-        `DTSTART;VALUE=DATE:${ds}\n` +
-        `DTEND;VALUE=DATE:${de}\n` +
-        `SUMMARY:${b.customerName} - ${b.bookingType}\n` +
-        `DESCRIPTION:${lines.join("\\n")}\n` +
-        `LOCATION:${b.customerAddress || ""}\n` +
-        "END:VEVENT\n";
-    });
-    ics += "END:VCALENDAR";
-    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "happyland-bookings.ics";
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const getIcsEmbedUrl = (url) => {
+    try {
+      const u = new URL(url);
+      const calMatch = u.pathname.match(/ical\/(.+?)\//);
+      if (calMatch) return `https://calendar.google.com/calendar/embed?src=${calMatch[1]}&ctz=Asia/Riyadh`;
+      return null;
+    } catch { return null; }
   };
 
-  const copyEventDetails = (b) => {
-    const txt = [
-      `رقم الحجز: ${b.bookingId}`,
-      `العميل: ${b.customerName}`,
-      `الهاتف: ${b.customerPhone}`,
-      `العنوان: ${b.customerAddress}`,
-      `تاريخ البداية: ${formatDateArabic(b.startDate)}`,
-      `تاريخ النهاية: ${formatDateArabic(b.endDate)}`,
-      `المبلغ الإجمالي: ${formatCurrency(b.totalAmount)}`,
-      `المبلغ المقدم: ${formatCurrency(b.paidAmount)}`,
-      `المتبقي: ${formatCurrency(b.remainingAmount)}`,
-      `نوع الحجز: ${b.bookingType}`,
-      `تاريخ الحجز: ${b.timestamp}`,
-      `نوع الفعالية: ${b.eventType}`,
-      `الفترة: ${b.shift}`,
-      `الباقة: ${b.packageUsed}`,
-      `الملاحظات: ${b.notes}`,
-    ].filter(l => l.split(": ")[1]).join("\n");
-    navigator.clipboard.writeText(txt).then(() => {
-      setCopySuccess(b.bookingId);
-      setTimeout(() => setCopySuccess(""), 2000);
-    });
+  const persistUrls = (urls) => {
+    setSavedUrls(urls);
+    localStorage.setItem("calSavedUrls", JSON.stringify(urls));
   };
 
-  const monthName = (m) => {
-    const names = { "01": "يناير", "02": "فبراير", "03": "مارس", "04": "إبريل", "05": "مايو", "06": "يونيو", "07": "يوليو", "08": "أغسطس", "09": "سبتمبر", "10": "أكتوبر", "11": "نوفمبر", "12": "ديسمبر" };
-    return `${names[m.slice(5)]} ${m.slice(0, 4)}`;
+  const fetchExtEvents = async (url) => {
+    setExtLoading(true);
+    setExtError("");
+    setExternalEvents([]);
+    try {
+      const res = await fetch("/api/calendar/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icsUrl: url }),
+      });
+      const data = await res.json();
+      if (data.success) setExternalEvents(data.events);
+      else setExtError(data.error || "فشل جلب الأحداث");
+    } catch { setExtError("خطأ في الاتصال"); }
+    setExtLoading(false);
   };
 
-  const openGCal = () => {
-    window.open("https://calendar.google.com/calendar/u/0/r/month", "_blank");
+  const handleSaveUrl = () => {
+    if (!newIcsUrl.trim()) return;
+    const updated = [...savedUrls.filter(u => u.url !== newIcsUrl.trim()), { url: newIcsUrl.trim() }];
+    persistUrls(updated);
+    setNewIcsUrl("");
+    fetchExtEvents(newIcsUrl.trim());
   };
 
-  // Import from ICS
+  const handleDeleteUrl = (url) => {
+    const updated = savedUrls.filter(u => u.url !== url);
+    persistUrls(updated);
+    if (externalEvents.length > 0 && url === savedUrls.find(s => s.url)?.url) setExternalEvents([]);
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImportLoading(true);
-    setImportError("");
-    setImportedEvents([]);
+    setExtLoading(true);
+    setExtError("");
+    setExternalEvents([]);
     try {
       const text = await file.text();
       const res = await fetch("/api/calendar/import", {
@@ -187,14 +132,14 @@ export default function CalendarView() {
         body: JSON.stringify({ icsContent: text }),
       });
       const data = await res.json();
-      if (data.success) setImportedEvents(data.events);
-      else setImportError(data.error || "فشل قراءة الملف");
-    } catch { setImportError("فشل قراءة الملف"); }
-    setImportLoading(false);
+      if (data.success) setExternalEvents(data.events);
+      else setExtError(data.error || "فشل قراءة الملف");
+    } catch { setExtError("فشل قراءة الملف"); }
+    setExtLoading(false);
     e.target.value = "";
   };
 
-  const handleCreateBookingFromEvent = async (ev) => {
+  const createBookingFromEvent = async (ev) => {
     const name = prompt("اسم العميل:", ev.summary) || ev.summary;
     if (!name) return;
     const phone = prompt("رقم الجوال:", "");
@@ -204,51 +149,73 @@ export default function CalendarView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerName: name,
-          customerPhone: phone,
-          startDate: ev.startDate,
-          endDate: ev.endDate,
-          totalAmount: "0",
-          paidAmount: "0",
-          bookingType: "حجز خيمة",
-          status: "قيد الانتظار",
+          customerName: name, customerPhone: phone,
+          startDate: ev.startDate, endDate: ev.endDate,
+          totalAmount: "0", paidAmount: "0",
+          bookingType: "حجز خيمة", status: "قيد الانتظار",
           notes: `مستورد من تقويم خارجي\nالحدث الأصلي: ${ev.summary}\n${ev.description}`.slice(0, 500),
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setImportedEvents(prev => prev.filter(e => e.eventId !== ev.eventId));
-        window.location.reload();
+        setExternalEvents(prev => prev.filter(e => e.eventId !== ev.eventId));
+        setTimeout(() => window.location.reload(), 500);
       } else alert("فشل إنشاء الحجز: " + (data.error || ""));
     } catch { alert("خطأ في الاتصال"); }
   };
 
-  // Export to external calendar
+  const downloadICS = () => {
+    let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//HappyLand//Calendar//AR\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\nX-WR-CALNAME:حجوزات هابي لاند\n";
+    filteredBookings.forEach(b => {
+      const ds = b.startDate.replace(/-/g, "");
+      const de = (() => { const d = new Date(b.endDate); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0].replace(/-/g, ""); })();
+      const lines = [
+        `رقم الحجز: ${b.bookingId}`, `العميل: ${b.customerName}`, `الجوال: ${b.customerPhone}`,
+        `العنوان: ${b.customerAddress}`, `المبلغ الإجمالي: ${formatCurrency(b.totalAmount)}`,
+        `المقدم: ${formatCurrency(b.paidAmount)}`, `المتبقي: ${formatCurrency(b.remainingAmount)}`,
+        `نوع الحجز: ${b.bookingType}`, `تاريخ الحجز: ${b.timestamp}`,
+        `نوع الفعالية: ${b.eventType}`, `الفترة: ${b.shift}`,
+      ].filter(l => l.split(": ")[1]);
+      ics += "BEGIN:VEVENT\n" + `UID:${b.bookingId}@happyland\n` + `DTSTART;VALUE=DATE:${ds}\n` + `DTEND;VALUE=DATE:${de}\n` + `SUMMARY:${b.customerName} - ${b.bookingType}\n` + `DESCRIPTION:${lines.join("\\n")}\n` + `LOCATION:${b.customerAddress || ""}\n` + "END:VEVENT\n";
+    });
+    ics += "END:VCALENDAR";
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "happyland-bookings.ics";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const copyEventDetails = (b) => {
+    const txt = [`رقم الحجز: ${b.bookingId}`, `العميل: ${b.customerName}`, `الهاتف: ${b.customerPhone}`, `العنوان: ${b.customerAddress}`, `تاريخ البداية: ${formatDateArabic(b.startDate)}`, `تاريخ النهاية: ${formatDateArabic(b.endDate)}`, `المبلغ الإجمالي: ${formatCurrency(b.totalAmount)}`, `المبلغ المقدم: ${formatCurrency(b.paidAmount)}`, `المتبقي: ${formatCurrency(b.remainingAmount)}`, `نوع الحجز: ${b.bookingType}`, `تاريخ الحجز: ${b.timestamp}`, `نوع الفعالية: ${b.eventType}`, `الفترة: ${b.shift}`, `الباقة: ${b.packageUsed}`, `الملاحظات: ${b.notes}`].filter(l => l.split(": ")[1]).join("\n");
+    navigator.clipboard.writeText(txt).then(() => { setCopySuccess(b.bookingId); setTimeout(() => setCopySuccess(""), 2000); });
+  };
+
   const handleExport = async () => {
     if (!exportCalId.trim()) { setExportError("الرجاء إدخال معرف التقويم الهدف"); return; }
-    setExportLoading(true);
-    setExportError("");
-    setExportResult(null);
+    setExportLoading(true); setExportError(""); setExportResult(null);
     try {
       const res = await fetch("/api/calendar/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetCalendarId: exportCalId.trim(),
-          bookingIds: filteredBookings.map(b => b.bookingId),
-        }),
+        body: JSON.stringify({ targetCalendarId: exportCalId.trim(), bookingIds: filteredBookings.map(b => b.bookingId) }),
       });
       const data = await res.json();
-      if (data.success) setExportResult(data);
-      else setExportError(data.error || "فشل التصدير");
+      if (data.success) setExportResult(data); else setExportError(data.error || "فشل التصدير");
     } catch { setExportError("خطأ في الاتصال"); }
     setExportLoading(false);
+  };
+
+  const monthName = (m) => {
+    const names = { "01": "يناير", "02": "فبراير", "03": "مارس", "04": "إبريل", "05": "مايو", "06": "يونيو", "07": "يوليو", "08": "أغسطس", "09": "سبتمبر", "10": "أكتوبر", "11": "نوفمبر", "12": "ديسمبر" };
+    return `${names[m.slice(5)]} ${m.slice(0, 4)}`;
   };
 
   if (loading) return <div className="ops-loading"><div className="spinner" /><p>جاري تحميل التقويم...</p></div>;
 
   return (
     <div className="glass" style={{ padding: "1.25rem", borderRadius: "12px" }}>
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem" }}>
         <h2 style={{ margin: 0, fontSize: "1.2rem" }}>📅 تقويم الحجوزات</h2>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -256,21 +223,13 @@ export default function CalendarView() {
             <option value="">كل الحجوزات</option>
             {months.map(m => <option key={m} value={m}>{monthName(m)}</option>)}
           </select>
-          <button className="btn btn-outline" onClick={openGCal} title="فتح تقويم جوجل الرئيسي">
-            📅 فتح التقويم
-          </button>
-          <button className="btn btn-outline" onClick={() => setImportModal(true)}>
-            📥 استيراد
-          </button>
-          <button className="btn btn-outline" onClick={() => setExportModal(true)}>
-            📤 تصدير
-          </button>
-          <button className="btn btn-primary" onClick={downloadICS} disabled={filteredBookings.length === 0}>
-            ⬇️ ICS
-          </button>
+          <button className="btn btn-outline" onClick={() => window.open("https://calendar.google.com/calendar/u/0/r/month", "_blank")}>📅 فتح التقويم</button>
+          <button className="btn btn-primary" onClick={downloadICS} disabled={filteredBookings.length === 0}>⬇️ ICS</button>
+          <button className="btn btn-outline" onClick={() => setExportModal(true)}>📤 تصدير</button>
         </div>
       </div>
 
+      {/* Stats */}
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <div className="stat-card"><span className="stat-label">عدد الحجوزات</span><span className="stat-value">{summary.total}</span></div>
         <div className="stat-card"><span className="stat-label">إجمالي الإيرادات</span><span className="stat-value gold">{formatCurrency(summary.revenue)}</span></div>
@@ -278,8 +237,69 @@ export default function CalendarView() {
         <div className="stat-card"><span className="stat-label">إجمالي المتبقي</span><span className="stat-value" style={{ color: "#f44336" }}>{formatCurrency(summary.remaining)}</span></div>
       </div>
 
+      {/* External Calendar Section */}
+      <div style={{ marginBottom: "1.25rem", padding: "0.75rem", background: "rgba(255,255,255,0.03)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+          <h3 style={{ margin: 0, fontSize: "1rem" }}>📥 التقويم الخارجي</h3>
+          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+            {savedUrls.map((su, i) => (
+              <div key={i} style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", background: "rgba(255,255,255,0.08)", padding: "0.2rem 0.5rem", borderRadius: "6px", fontSize: "0.75rem", maxWidth: "200px", overflow: "hidden" }}>
+                <span style={{ direction: "ltr", textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={su.url}>{su.url}</span>
+                <button className="btn btn-sm" style={{ padding: "0.1rem 0.3rem", fontSize: "0.7rem" }} onClick={() => fetchExtEvents(su.url)} disabled={extLoading}>🔄</button>
+                <button className="btn btn-sm" style={{ padding: "0.1rem 0.3rem", fontSize: "0.7rem", background: "rgba(255,0,0,0.2)" }} onClick={() => handleDeleteUrl(su.url)}>✕</button>
+              </div>
+            ))}
+            <input ref={fileInputRef} type="file" accept=".ics" onChange={handleFileUpload} style={{ display: "none" }} />
+            <button className="btn btn-sm btn-outline" onClick={() => fileInputRef.current?.click()} title="رفع ملف ICS">📂</button>
+          </div>
+        </div>
+
+        {/* Add new URL bar */}
+        <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.5rem" }}>
+          <input className="form-control" dir="ltr" placeholder="الصق رابط ICS (الرابط السري بتنسيق iCal)..." value={newIcsUrl} onChange={e => setNewIcsUrl(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleSaveUrl(); }} style={{ fontSize: "0.82rem" }} />
+          <button className="btn btn-primary" onClick={handleSaveUrl} disabled={!newIcsUrl.trim() || extLoading}>حفظ وجلب</button>
+        </div>
+
+        {/* Embedded preview if available */}
+        {savedUrls.length > 0 && getIcsEmbedUrl(savedUrls[0].url) && (
+          <div style={{ marginBottom: "0.75rem" }}>
+            <iframe src={getIcsEmbedUrl(savedUrls[0].url)} style={{ width: "100%", height: "350px", border: "none", borderRadius: "8px", background: "#fff" }} />
+          </div>
+        )}
+
+        {extLoading && <div style={{ textAlign: "center", padding: "1rem", opacity: 0.5 }}>جاري جلب الأحداث...</div>}
+        {extError && <div className="alert alert-danger" style={{ fontSize: "0.85rem", padding: "0.5rem" }}>{extError}</div>}
+
+        {externalEvents.length > 0 && (
+          <div>
+            <h4 style={{ fontSize: "0.9rem", marginBottom: "0.4rem" }}>الأحداث الخارجية ({externalEvents.length})</h4>
+            <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+              {externalEvents.map(ev => (
+                <div key={ev.eventId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.45rem 0.5rem", borderBottom: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", marginBottom: "0.2rem", background: "rgba(255,255,255,0.02)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{ev.summary}</strong>
+                    <div style={{ fontSize: "0.8rem", opacity: 0.6 }}>
+                      {formatDateArabic(ev.startDate)} → {formatDateArabic(ev.endDate)}
+                      {ev.location && ` · ${ev.location}`}
+                    </div>
+                  </div>
+                  <button className="btn btn-sm btn-primary" onClick={() => createBookingFromEvent(ev)}>➕ إنشاء حجز</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {!extLoading && savedUrls.length === 0 && !extError && (
+          <div style={{ textAlign: "center", opacity: 0.4, padding: "1rem", fontSize: "0.85rem" }}>
+            أضف رابط ICS أعلاه لاستيراد الأحداث من تقويمك الخارجي وعرضها هنا مباشرة
+          </div>
+        )}
+      </div>
+
       {error && <div className="alert alert-danger">{error}</div>}
 
+      {/* Bookings List */}
       {filteredBookings.length === 0 ? (
         <div style={{ textAlign: "center", opacity: 0.5, padding: "2rem" }}>لا توجد حجوزات مؤكدة في هذه الفترة</div>
       ) : (
@@ -293,19 +313,14 @@ export default function CalendarView() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0 }}>
                     <span style={{ fontSize: "1.2rem" }}>{b.bookingType === "حجز الصالة" ? "🏛️" : "⛺"}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <strong>{b.customerName}</strong>
-                      <span style={{ opacity: 0.6, marginRight: "0.5rem", fontSize: "0.85rem" }}>{b.bookingType}</span>
-                    </div>
+                    <div style={{ minWidth: 0 }}><strong>{b.customerName}</strong><span style={{ opacity: 0.6, marginRight: "0.5rem", fontSize: "0.85rem" }}>{b.bookingType}</span></div>
                   </div>
                   <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap", fontSize: "0.85rem" }}>
-                    <span title="تاريخ البداية">{formatDateArabic(b.startDate)}</span>
-                    <span title="المبلغ المقدم" style={{ color: "#4caf50", fontWeight: "bold" }}>مقدم: {formatCurrency(b.paidAmount)}</span>
-                    <span title="المتبقي" style={{ color: b.remainingAmount > 0 ? "#f44336" : "#4caf50", fontWeight: "bold" }}>متبقي: {formatCurrency(b.remainingAmount)}</span>
+                    <span>{formatDateArabic(b.startDate)}</span>
+                    <span style={{ color: "#4caf50", fontWeight: "bold" }}>مقدم: {formatCurrency(b.paidAmount)}</span>
+                    <span style={{ color: b.remainingAmount > 0 ? "#f44336" : "#4caf50", fontWeight: "bold" }}>متبقي: {formatCurrency(b.remainingAmount)}</span>
                     <button className="btn btn-sm" style={{ background: "rgba(255,255,255,0.1)", padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                      onClick={e => { e.stopPropagation(); copyEventDetails(b); }}>
-                      {copySuccess === b.bookingId ? "✅ تم النسخ" : "📋 نسخ"}
-                    </button>
+                      onClick={e => { e.stopPropagation(); copyEventDetails(b); }}>{copySuccess === b.bookingId ? "✅" : "📋"}</button>
                   </div>
                 </div>
                 {isExpanded && (
@@ -337,121 +352,24 @@ export default function CalendarView() {
         </div>
       )}
 
-      {/* Import Modal */}
-      {importModal && (
-        <div className="modal-overlay" onClick={() => setImportModal(false)}>
-          <div className="modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: "700px" }}>
-            <div className="modal-header">
-              <h3>📥 استيراد من تقويم خارجي</h3>
-              <button className="modal-close" onClick={() => setImportModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem", background: "rgba(255,255,255,0.05)", padding: "0.75rem", borderRadius: "6px" }}>
-                <strong>الطريقة الأسهل — رابط ICS الدائم:</strong>
-                <ol style={{ margin: "0.5rem 0", paddingRight: "1.5rem", fontSize: "0.8rem" }}>
-                  <li>في إعدادات تقويم جوجل ← اسم التقويم ← <strong>دمج التقويم</strong></li>
-                  <li>انسخ <strong>"الرابط السري بتنسيق iCal"</strong> (Secret address in iCal format)</li>
-                  <li>الصقه أدناه واضغط <strong>حفظ الرابط</strong> — لمرة واحدة فقط</li>
-                  <li>لاحقاً: افتح التقويم ← استيراد ← اضغط على الرابط المحفوظ لجلب الأحداث الجديدة</li>
-                </ol>
-                <strong>بديل:</strong> صدّر ملف <code>.ics</code> من أي تطبيق تقويم وارفعه هنا
-              </div>
-
-              <div className="form-group">
-                <label>رابط ICS (الرابط السري بتنسيق iCal):</label>
-                <input className="form-control" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
-                  value={importIcsUrl} onChange={e => setImportIcsUrl(e.target.value)} />
-              </div>
-
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                <button className="btn btn-primary" onClick={() => fetchSavedUrl(importIcsUrl)} disabled={importLoading || !importIcsUrl.trim()}>
-                  {importLoading ? "جاري الجلب..." : "🔍 جلب الأحداث"}
-                </button>
-                <button className="btn btn-outline" onClick={saveUrl} disabled={!importIcsUrl.trim()}>
-                  💾 حفظ الرابط
-                </button>
-                <span style={{ opacity: 0.5 }}>أو</span>
-                <input ref={fileInputRef} type="file" accept=".ics" onChange={handleFileUpload} style={{ display: "none" }} />
-                <button className="btn btn-outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
-                  📂 رفع ملف ICS
-                </button>
-              </div>
-              {importSuccess && <div className="alert alert-success" style={{ marginTop: "0.5rem" }}>{importSuccess}</div>}
-              {importError && <div className="alert alert-danger" style={{ marginTop: "0.5rem" }}>{importError}</div>}
-
-              {savedUrls.length > 0 && (
-                <div style={{ marginTop: "1rem" }}>
-                  <h4 style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>الروابط المحفوظة</h4>
-                  {savedUrls.map((su, i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.4rem 0", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: "0.85rem" }}>
-                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "left" }}>
-                        {su.url}
-                      </span>
-                      <div style={{ display: "flex", gap: "0.4rem", marginRight: "0.5rem" }}>
-                        <button className="btn btn-sm btn-primary" onClick={() => fetchSavedUrl(su.url)} disabled={importLoading}>
-                          جلب
-                        </button>
-                        <button className="btn btn-sm" style={{ background: "rgba(255,0,0,0.2)" }} onClick={() => deleteSavedUrl(su.url)}>
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {importedEvents.length > 0 && (
-                <div style={{ marginTop: "1rem" }}>
-                  <h4>الأحداث المستوردة ({importedEvents.length})</h4>
-                  {importedEvents.map(ev => (
-                    <div key={ev.eventId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <strong>{ev.summary}</strong>
-                        <div style={{ fontSize: "0.8rem", opacity: 0.6 }}>
-                          {formatDateArabic(ev.startDate)} → {formatDateArabic(ev.endDate)}
-                          {ev.location && ` · ${ev.location}`}
-                        </div>
-                      </div>
-                      <button className="btn btn-sm btn-primary" onClick={() => handleCreateBookingFromEvent(ev)}>
-                        ➕ إنشاء حجز
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Export Modal */}
       {exportModal && (
         <div className="modal-overlay" onClick={() => setExportModal(false)}>
           <div className="modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: "500px" }}>
-            <div className="modal-header">
-              <h3>📤 تصدير إلى تقويم خارجي</h3>
-              <button className="modal-close" onClick={() => setExportModal(false)}>✕</button>
-            </div>
+            <div className="modal-header"><h3>📤 تصدير إلى تقويم خارجي</h3><button className="modal-close" onClick={() => setExportModal(false)}>✕</button></div>
             <div className="modal-body">
-              <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem", borderRadius: "6px" }}>
+              <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem", background: "rgba(255,255,255,0.05)", padding: "0.75rem", borderRadius: "6px" }}>
                 <strong>الشرط:</strong> يجب مشاركة التقويم الهدف مع الحساب الخدمي <code dir="ltr" style={{ fontSize: "0.7rem" }}>happy-land@steel-flare-475919-n8.iam.gserviceaccount.com</code>
                 <br />سيتم تصدير جميع الحجوزات المعروضة حالياً ({filteredBookings.length} حجز).
+                <br /><strong>بديل:</strong> استخدم زر <strong>⬇️ ICS</strong> لتحميل الملف واستيراده في أي تقويم.
               </div>
               <div className="form-group">
-                <label>معرف التقويم الهدف (Target Calendar ID):</label>
-                <input className="form-control" dir="ltr" placeholder="example@gmail.com"
-                  value={exportCalId} onChange={e => setExportCalId(e.target.value)} />
+                <label>معرف التقويم الهدف:</label>
+                <input className="form-control" dir="ltr" placeholder="example@gmail.com" value={exportCalId} onChange={e => setExportCalId(e.target.value)} />
               </div>
               {exportError && <div className="alert alert-danger">{exportError}</div>}
-              {exportResult && (
-                <div className="alert alert-success" style={{ marginTop: "0.5rem" }}>
-                  ✅ تم التصدير بنجاح: {exportResult.exported} حجز
-                  {exportResult.failed > 0 && `, فشل ${exportResult.failed} حجز`}
-                </div>
-              )}
-              <button className="btn btn-primary" onClick={handleExport} disabled={exportLoading} style={{ marginTop: "0.5rem" }}>
-                {exportLoading ? "جاري التصدير..." : "📤 تصدير الحجوزات"}
-              </button>
+              {exportResult && <div className="alert alert-success" style={{ marginTop: "0.5rem" }}>✅ تم التصدير: {exportResult.exported} حجز{exportResult.failed > 0 && `، فشل ${exportResult.failed}`}</div>}
+              <button className="btn btn-primary" onClick={handleExport} disabled={exportLoading} style={{ marginTop: "0.5rem" }}>{exportLoading ? "جاري..." : "📤 تصدير"}</button>
             </div>
           </div>
         </div>
