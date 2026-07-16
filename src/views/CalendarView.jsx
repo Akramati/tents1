@@ -18,7 +18,45 @@ export default function CalendarView() {
   const [importedEvents, setImportedEvents] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
+  const [importSuccess, setImportSuccess] = useState("");
+  const [savedUrls, setSavedUrls] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("calSavedUrls") || "[]"); }
+    catch { return []; }
+  });
   const fileInputRef = React.useRef(null);
+
+  const saveUrl = () => {
+    if (!importIcsUrl.trim()) return;
+    const updated = [...savedUrls.filter(u => u.url !== importIcsUrl.trim()), { url: importIcsUrl.trim(), name: `تقويم ${savedUrls.length + 1}` }];
+    setSavedUrls(updated);
+    localStorage.setItem("calSavedUrls", JSON.stringify(updated));
+    setImportSuccess("✅ تم حفظ الرابط");
+    setTimeout(() => setImportSuccess(""), 2000);
+  };
+
+  const deleteSavedUrl = (url) => {
+    const updated = savedUrls.filter(u => u.url !== url);
+    setSavedUrls(updated);
+    localStorage.setItem("calSavedUrls", JSON.stringify(updated));
+  };
+
+  const fetchSavedUrl = async (url) => {
+    setImportIcsUrl(url);
+    setImportLoading(true);
+    setImportError("");
+    setImportedEvents([]);
+    try {
+      const res = await fetch("/api/calendar/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icsUrl: url }),
+      });
+      const data = await res.json();
+      if (data.success) setImportedEvents(data.events);
+      else setImportError(data.error || "فشل جلب الأحداث");
+    } catch { setImportError("خطأ في الاتصال"); }
+    setImportLoading(false);
+  };
 
   // Export modal state
   const [exportModal, setExportModal] = useState(false);
@@ -135,24 +173,6 @@ export default function CalendarView() {
   };
 
   // Import from ICS
-  const handleFetchExternal = async () => {
-    if (!importIcsUrl.trim()) { setImportError("الرجاء إدخال رابط ICS"); return; }
-    setImportLoading(true);
-    setImportError("");
-    setImportedEvents([]);
-    try {
-      const res = await fetch("/api/calendar/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ icsUrl: importIcsUrl.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) setImportedEvents(data.events);
-      else setImportError(data.error || "فشل جلب الأحداث");
-    } catch { setImportError("خطأ في الاتصال"); }
-    setImportLoading(false);
-  };
-
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -320,28 +340,35 @@ export default function CalendarView() {
       {/* Import Modal */}
       {importModal && (
         <div className="modal-overlay" onClick={() => setImportModal(false)}>
-          <div className="modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: "650px" }}>
+          <div className="modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: "700px" }}>
             <div className="modal-header">
               <h3>📥 استيراد من تقويم خارجي</h3>
               <button className="modal-close" onClick={() => setImportModal(false)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem", background: "rgba(255,255,255,0.05)", padding: "0.75rem", borderRadius: "6px" }}>
-                <strong>طريقة 1:</strong> استخدم رابط ICS من تقويم جوجل
+                <strong>الطريقة الأسهل — رابط ICS الدائم:</strong>
                 <ol style={{ margin: "0.5rem 0", paddingRight: "1.5rem", fontSize: "0.8rem" }}>
-                  <li>في إعدادات التقويم، ابحث عن <strong>"الرابط السري بتنسيق iCal"</strong></li>
-                  <li>انسخ الرابط والصقه أدناه</li>
+                  <li>في إعدادات تقويم جوجل ← اسم التقويم ← <strong>دمج التقويم</strong></li>
+                  <li>انسخ <strong>"الرابط السري بتنسيق iCal"</strong> (Secret address in iCal format)</li>
+                  <li>الصقه أدناه واضغط <strong>حفظ الرابط</strong> — لمرة واحدة فقط</li>
+                  <li>لاحقاً: افتح التقويم ← استيراد ← اضغط على الرابط المحفوظ لجلب الأحداث الجديدة</li>
                 </ol>
-                <strong>طريقة 2:</strong> حمّل ملف ICS من أي تقويم
+                <strong>بديل:</strong> صدّر ملف <code>.ics</code> من أي تطبيق تقويم وارفعه هنا
               </div>
+
               <div className="form-group">
                 <label>رابط ICS (الرابط السري بتنسيق iCal):</label>
                 <input className="form-control" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
                   value={importIcsUrl} onChange={e => setImportIcsUrl(e.target.value)} />
               </div>
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <button className="btn btn-primary" onClick={handleFetchExternal} disabled={importLoading}>
-                  {importLoading ? "جاري الجلب..." : "🔍 جلب من الرابط"}
+
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                <button className="btn btn-primary" onClick={() => fetchSavedUrl(importIcsUrl)} disabled={importLoading || !importIcsUrl.trim()}>
+                  {importLoading ? "جاري الجلب..." : "🔍 جلب الأحداث"}
+                </button>
+                <button className="btn btn-outline" onClick={saveUrl} disabled={!importIcsUrl.trim()}>
+                  💾 حفظ الرابط
                 </button>
                 <span style={{ opacity: 0.5 }}>أو</span>
                 <input ref={fileInputRef} type="file" accept=".ics" onChange={handleFileUpload} style={{ display: "none" }} />
@@ -349,7 +376,29 @@ export default function CalendarView() {
                   📂 رفع ملف ICS
                 </button>
               </div>
+              {importSuccess && <div className="alert alert-success" style={{ marginTop: "0.5rem" }}>{importSuccess}</div>}
               {importError && <div className="alert alert-danger" style={{ marginTop: "0.5rem" }}>{importError}</div>}
+
+              {savedUrls.length > 0 && (
+                <div style={{ marginTop: "1rem" }}>
+                  <h4 style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>الروابط المحفوظة</h4>
+                  {savedUrls.map((su, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.4rem 0", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: "0.85rem" }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "left" }}>
+                        {su.url}
+                      </span>
+                      <div style={{ display: "flex", gap: "0.4rem", marginRight: "0.5rem" }}>
+                        <button className="btn btn-sm btn-primary" onClick={() => fetchSavedUrl(su.url)} disabled={importLoading}>
+                          جلب
+                        </button>
+                        <button className="btn btn-sm" style={{ background: "rgba(255,0,0,0.2)" }} onClick={() => deleteSavedUrl(su.url)}>
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {importedEvents.length > 0 && (
                 <div style={{ marginTop: "1rem" }}>
