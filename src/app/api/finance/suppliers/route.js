@@ -92,6 +92,13 @@ export async function DELETE(request) {
     }
     const sheetRow = idx + 1;
     const current = rows[idx];
+    const balance = parseFloat(current[4] || 0);
+    if (balance !== 0) {
+      return NextResponse.json({
+        success: false,
+        error: `لا يمكن حذف المورد. الرصيد الحالي: ${balance > 0 ? "دائن" : "مدين"} ${Math.abs(balance).toLocaleString()} ريال. قم بتسوية الرصيد أولاً.`
+      }, { status: 400 });
+    }
     // Soft delete: set isActive to FALSE
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,

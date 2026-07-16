@@ -7,21 +7,22 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 
 // Helper: reverse a payment transaction
 async function reversePayment(transId) {
-  // Read transaction
-  const transRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A2:I",
-  });
-  const transRows = transRes.data.values || [];
-  const tIdx = transRows.findIndex((r) => r[0] === transId.toString());
-  if (tIdx < 0) return { error: "المعاملة غير موجودة" };
+  try {
+    // Read transaction
+    const transRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Transactions!A2:I",
+    });
+    const transRows = transRes.data.values || [];
+    const tIdx = transRows.findIndex((r) => r[0] === transId.toString());
+    if (tIdx < 0) return { error: "المعاملة غير موجودة" };
 
-  const tRow = transRows[tIdx];
-  const rowNum = tIdx + 2;
-  const supplierId = tRow[1];
-  const amt = parseFloat(tRow[4] || 0);
-  const purchaseId = tRow[5] || "";
-  const cashCode = tRow[7] || "1101";
-  const journalId = tRow[8] || "";
+    const tRow = transRows[tIdx];
+    const rowNum = tIdx + 2;
+    const supplierId = tRow[1];
+    const amt = parseFloat(tRow[4] || 0);
+    const purchaseId = tRow[5] || "";
+    const cashCode = tRow[7] || "1101";
+    const journalId = tRow[8] || "";
 
   // 1. Reverse supplier balance (+amount)
   const supRes = await sheets.spreadsheets.values.get({
@@ -39,14 +40,17 @@ async function reversePayment(transId) {
     });
   }
 
-  // 2. Reverse purchase paidAmount if linked
+  // 2. Reverse purchase paidAmount if linked (skip if purchase is already cancelled)
   if (purchaseId) {
     const pRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:I",
     });
     const pRows = pRes.data.values || [];
     const pIdx = pRows.findIndex((r) => r[0] === purchaseId);
-      if (pIdx >= 0) {
+    if (pIdx >= 0) {
+      const purchaseStatus = pRows[pIdx][8] || "";
+      // Don't modify paidAmount for cancelled purchases (balance already adjusted by cancellation)
+      if (purchaseStatus !== "cancelled") {
         const pRow = pIdx + 1;
         const curPaid = parseFloat(pRows[pIdx][5] || 0);
         const newPaid = Math.max(0, curPaid - amt);
@@ -59,6 +63,7 @@ async function reversePayment(transId) {
         });
       }
     }
+  }
 
     // 3. Delete the old finance ledger entry if journalId exists
     if (journalId) {
@@ -73,6 +78,10 @@ async function reversePayment(transId) {
     });
 
   return { success: true, supplierId, amount: amt, purchaseId, cashAccountCode: cashCode };
+  } catch (error) {
+    console.error("reversePayment error:", error);
+    return { error: "فشل عكس الدفع: " + error.message };
+  }
 }
 
 // POST /api/finance/suppliers/pay — record payment to a supplier
@@ -100,7 +109,7 @@ export async function POST(request) {
     const supRow = supIdx + 1;
     const supName = supRows[supIdx][1] || supplierId;
     const currentBalance = parseFloat(supRows[supIdx][4] || 0);
-    const newBalance = Math.max(0, currentBalance - amt);
+    const newBalance = currentBalance - amt;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID, range: `Suppliers!E${supRow}`,
@@ -260,7 +269,7 @@ export async function PUT(request) {
       });
       const pRows = pRes.data.values || [];
       const pIdx = pRows.findIndex((r) => r[0] === newBody.purchaseId);
-      if (pIdx > 0) {
+      if (pIdx >= 0) {
         const pRow = pIdx + 1;
         const currentPaid = parseFloat(pRows[pIdx][5] || 0);
         const totalAmt = parseFloat(pRows[pIdx][4] || 0);

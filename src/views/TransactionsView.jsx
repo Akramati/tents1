@@ -2028,7 +2028,7 @@ ${rentEntries.map((e, i) => {
           font-weight: 600;
         }
       `}</style>
-      </>}
+      </>)}
     </section>
   );
 }

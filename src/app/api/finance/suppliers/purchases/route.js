@@ -70,7 +70,6 @@ export async function DELETE(request) {
     const totalAmt = parseFloat(pRows[pIdx][4] || 0);
     const paidAmt = parseFloat(pRows[pIdx][5] || 0);
     const journalId = pRows[pIdx][11] || "";
-    const remainingAmt = totalAmt - paidAmt;
 
     // Mark as cancelled
     await sheets.spreadsheets.values.update({
@@ -84,23 +83,21 @@ export async function DELETE(request) {
       await deleteFinanceEntry(journalId);
     }
 
-    // Reverse supplier balance: subtract remaining amount only (paid amounts are separate)
-    if (remainingAmt > 0) {
-      const supRes = await sheets.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID, range: "Suppliers!A:G",
+    // Reverse supplier balance: subtract total amount (not just remaining)
+    const supRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Suppliers!A:G",
+    });
+    const supRows = supRes.data.values || [];
+    const supIdx = supRows.findIndex((r) => r[0] === supplierId);
+    if (supIdx >= 0) {
+      const supRow2 = supIdx + 1;
+      const curBalance = parseFloat(supRows[supIdx][4] || 0);
+      const newBalance = curBalance - totalAmt;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID, range: `Suppliers!E${supRow2}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[newBalance.toString()]] },
       });
-      const supRows = supRes.data.values || [];
-      const supIdx = supRows.findIndex((r) => r[0] === supplierId);
-      if (supIdx >= 0) {
-        const supRow2 = supIdx + 1;
-        const curBalance = parseFloat(supRows[supIdx][4] || 0);
-        const newBalance = Math.max(0, curBalance - remainingAmt);
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: SPREADSHEET_ID, range: `Suppliers!E${supRow2}`,
-          valueInputOption: "RAW",
-          requestBody: { values: [[newBalance.toString()]] },
-        });
-      }
     }
 
     // Record cancellation transaction
@@ -115,12 +112,12 @@ export async function DELETE(request) {
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[(maxTrans + 1).toString(), supplierId, new Date().toLocaleDateString("en-CA"),
-          "cancel", remainingAmt.toString(), purchaseId, `إلغاء فاتورة ${pRows[pIdx][3] || purchaseId}`]],
+          "cancel", totalAmt.toString(), purchaseId, `إلغاء فاتورة ${pRows[pIdx][3] || purchaseId}`]],
       },
     });
 
     const msg = paidAmt > 0
-      ? `تم إلغاء الفاتورة (المتبقي ${remainingAmt} ريال). المدفوعات السابقة (${paidAmt} ريال) لم تتأثر.`
+      ? `تم إلغاء الفاتورة بقيمة ${totalAmt.toLocaleString()} ريال. المدفوعات السابقة (${paidAmt.toLocaleString()} ريال) بقيت كرصيد مدين للمورد.`
       : "تم إلغاء الفاتورة";
 
     return NextResponse.json({ success: true, message: msg });
@@ -137,7 +134,7 @@ export async function POST(request) {
     if (auth.error) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
 
     const body = await request.json();
-    const { supplierId, date, description, totalAmount, notes, costCenter, imageUrl, accountCode, carryFrom, inventoryItems } = body;
+    const { supplierId, date, description, totalAmount, notes, costCenter, imageUrl, accountCode, carryFrom, inventoryItems, inventoryAction } = body;
 
     if (!supplierId || !description || !totalAmount || parseFloat(totalAmount) <= 0) {
       return NextResponse.json({ success: false, error: "المورد والوصف والمبلغ مطلوبون" }, { status: 400 });
@@ -256,17 +253,34 @@ export async function POST(request) {
       },
     });
 
-    // Process inventory items: create new items in inventory (existing items are just linked for documentation)
-    if (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0) {
+    // Process inventory items based on inventoryAction
+    if (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0 && inventoryAction !== "none") {
+      const invStockRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A:E",
+      });
+      const invRows = invStockRes.data.values || [];
+
       for (const item of inventoryItems) {
         if (!item.itemName) continue;
         const qty = parseInt(item.quantity) || 1;
-        if (!item.itemId) {
+        const unitCost = parseFloat(item.unitCost) || 0;
+        const itemAmount = parseFloat(item.amount) || 0;
+
+        if (item.itemId && inventoryAction === "restock") {
+          // Update existing item: increase quantity + weighted average cost
+          const invIdx = invRows.findIndex(r => r[0] === item.itemId.toString());
+          if (invIdx >= 0) {
+            const sheetRow = invIdx + 1;
+            const oldQty = parseInt(invRows[invIdx][2] || 0);
+            const newQty = oldQty + qty;
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SPREADSHEET_ID, range: `Inventory_Stock!C${sheetRow}`,
+              valueInputOption: "RAW",
+              requestBody: { values: [[newQty.toString()]] },
+            });
+          }
+        } else if (!item.itemId) {
           // Create new inventory item
-          const invRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A:A",
-          });
-          const invRows = invRes.data.values || [];
           let maxInv = 0;
           for (const r of invRows) { const n = parseInt(r[0]); if (n > maxInv) maxInv = n; }
           await sheets.spreadsheets.values.append({
@@ -275,7 +289,7 @@ export async function POST(request) {
             requestBody: { values: [[(maxInv + 1).toString(), item.itemName, qty.toString(), "0"]] },
           });
         }
-        // Existing items: linked for documentation only — quantity not updated here
+        // Existing items in "add" mode: linked for documentation only — quantity not updated
       }
     }
 

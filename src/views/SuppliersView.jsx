@@ -37,6 +37,7 @@ export default function SuppliersView() {
   const [carryPurchases, setCarryPurchases] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [purchaseItems, setPurchaseItems] = useState([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
+  const [inventoryAction, setInventoryAction] = useState("add");
 
   // Customer receivables state
   const [activeTab, setActiveTab] = useState("suppliers");
@@ -242,6 +243,7 @@ export default function SuppliersView() {
             unitCost: parseFloat(i.unitCost) || 0,
             amount: parseFloat(i.amount) || 0,
           })),
+          inventoryAction,
         }),
       });
       const data = await res.json();
@@ -251,6 +253,7 @@ export default function SuppliersView() {
         setPurchaseForm({ description: "", totalAmount: "", notes: "", date: "", costCenter: "", accountCode: "" });
         setPurchaseImage(null);
         setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
+        setInventoryAction("add");
 
         // Send WhatsApp to supplier
         const supplier = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
@@ -443,7 +446,7 @@ export default function SuppliersView() {
     window.open(`https://wa.me/${supplier.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
   };
 
-  const balanceColor = (b) => b > 0 ? "#dc2626" : "#059669";
+  const balanceColor = (b) => b > 0 ? "#059669" : "#dc2626";
 
   // ─── Customer receivables ──────────────────────────────────────────
   useEffect(() => {
@@ -529,7 +532,7 @@ export default function SuppliersView() {
               <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: balanceColor(s.balance) }}>
                 {s.balance.toLocaleString()} ر.ي
               </div>
-              <div style={{ fontSize: "0.75rem", opacity: 0.6 }}>{s.balance > 0 ? "مدين" : "رصيد دائن"}</div>
+              <div style={{ fontSize: "0.75rem", opacity: 0.6 }}>{s.balance > 0 ? "دائن" : s.balance < 0 ? "مدين" : "متساوي"}</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
@@ -892,16 +895,28 @@ export default function SuppliersView() {
         {/* Delete Supplier Confirm */}
         {showDeleteConfirm && (
           <div className="modal-overlay" onClick={() => setShowDeleteConfirm(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "350px" }}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "400px" }}>
               <div className="modal-header"><h2>⚠️ تأكيد الحذف</h2><button className="modal-close" onClick={() => setShowDeleteConfirm(null)}>✕</button></div>
               <div className="modal-body">
                 <p>هل أنت متأكد من حذف المورد <strong>{s.supplierName}</strong>؟</p>
-                <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>سيتم إخفاء المورد مع الاحتفاظ بسجل المعاملات</p>
+                {s.balance !== 0 ? (
+                  <div style={{ background: "rgba(220,38,38,0.1)", borderRight: "3px solid #dc2626", padding: "0.75rem", borderRadius: "6px", marginTop: "0.5rem" }}>
+                    <p style={{ fontSize: "0.85rem", color: "#dc2626", margin: 0 }}>
+                      ⚠️ المورد لديه رصيد <strong>{s.balance > 0 ? "دائن" : "مدين"}: {Math.abs(s.balance).toLocaleString()} ريال</strong>
+                    </p>
+                    <p style={{ fontSize: "0.8rem", opacity: 0.7, margin: "0.5rem 0 0 0" }}>
+                      يجب تسوية الرصيد أولاً قبل حذف المورد.
+                    </p>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>سيتم إخفاء المورد مع الاحتفاظ بسجل المعاملات</p>
+                )}
               </div>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(null)}>إلغاء</button>
-                <button className="btn" style={{ background: "#dc2626", color: "#fff" }} onClick={() => handleDelete(s.supplierId)} disabled={saving}>
-                  {saving ? "..." : "تأكيد الحذف"}
+                <button className="btn" style={{ background: s.balance !== 0 ? "#6b7280" : "#dc2626", color: "#fff" }}
+                  onClick={() => s.balance === 0 && handleDelete(s.supplierId)} disabled={saving || s.balance !== 0}>
+                  {saving ? "..." : s.balance !== 0 ? "الرصيد غير صفري" : "تأكيد الحذف"}
                 </button>
               </div>
             </div>
@@ -909,13 +924,32 @@ export default function SuppliersView() {
         )}
 
         {/* Delete Purchase Confirm */}
-        {deletePurchConfirm && (
+        {deletePurchConfirm && (() => {
+          const purch = purchases.find(p => p.purchaseId === deletePurchConfirm);
+          const hasPayments = purch && purch.paidAmount > 0;
+          return (
           <div className="modal-overlay" onClick={() => setDeletePurchConfirm(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "350px" }}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "400px" }}>
               <div className="modal-header"><h2>⚠️ إلغاء الفاتورة</h2><button className="modal-close" onClick={() => setDeletePurchConfirm(null)}>✕</button></div>
               <div className="modal-body">
                 <p>هل أنت متأكد من إلغاء الفاتورة <strong>{deletePurchConfirm}</strong>؟</p>
-                <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>سيتم عكس المبلغ من رصيد المورد</p>
+                {hasPayments ? (
+                  <>
+                    <div style={{ background: "rgba(220,38,38,0.1)", borderRight: "3px solid #dc2626", padding: "0.75rem", borderRadius: "6px", marginTop: "0.5rem" }}>
+                      <p style={{ fontSize: "0.85rem", color: "#dc2626", margin: 0 }}>
+                        ⚠️ هذه الفاتورة مسددة بـ <strong>{purch.paidAmount.toLocaleString()} ريال</strong>.
+                      </p>
+                      <p style={{ fontSize: "0.85rem", color: "#dc2626", margin: "0.5rem 0 0 0" }}>
+                        إلغاؤها سيجعل المورد <strong>مديناً</strong> بهذا المبلغ (رصيد سالب).
+                      </p>
+                      <p style={{ fontSize: "0.75rem", opacity: 0.7, margin: "0.5rem 0 0 0" }}>
+                        نصيحة: احذف الدفعات أولاً لتصفير الرصيد بالكامل.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>سيتم عكس المبلغ من رصيد المورد</p>
+                )}
               </div>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setDeletePurchConfirm(null)}>إلغاء</button>
@@ -925,7 +959,8 @@ export default function SuppliersView() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Image Preview Modal */}
         {expandedImage && (
@@ -1009,6 +1044,40 @@ export default function SuppliersView() {
                     ))}
                   </select>
                 </div>
+                {/* Inventory action selector */}
+                <div className="form-group" style={{ marginTop: "0.75rem", borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+                  <label style={{ fontWeight: "bold", color: "var(--accent)", marginBottom: "0.4rem" }}>📦 الربط بالمخزون</label>
+                  <div style={{ display: "flex", gap: "1rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", cursor: "pointer", fontSize: "0.82rem" }}>
+                      <input type="radio" name="invAction" value="add" checked={inventoryAction === "add"}
+                        onChange={() => setInventoryAction("add")} /> إضافة أصناف جديدة
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", cursor: "pointer", fontSize: "0.82rem" }}>
+                      <input type="radio" name="invAction" value="restock" checked={inventoryAction === "restock"}
+                        onChange={() => setInventoryAction("restock")} /> تطوير المخزون (زيادة الكميات)
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", cursor: "pointer", fontSize: "0.82rem" }}>
+                      <input type="radio" name="invAction" value="none" checked={inventoryAction === "none"}
+                        onChange={() => setInventoryAction("none")} /> توثيق فقط (بدون تغيير الكميات)
+                    </label>
+                  </div>
+                  {inventoryAction === "restock" && (
+                    <div style={{ fontSize: "0.75rem", color: "#6366f1", marginBottom: "0.4rem" }}>
+                      💡 سيتم إضافة الكميات المدخلة إلى الأصناف الموجودة في المخزون
+                    </div>
+                  )}
+                  {inventoryAction === "add" && (
+                    <div style={{ fontSize: "0.75rem", color: "#059669", marginBottom: "0.4rem" }}>
+                      💡 سيتم إنشاء أصناف جديدة في المخزون (الأصناف الموجودة لا تتأثر)
+                    </div>
+                  )}
+                  {inventoryAction === "none" && (
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.4rem" }}>
+                      💡 يتم توثيق الأصناف في الفاتورة فقط بدون تغيير كميات المخزون
+                    </div>
+                  )}
+                </div>
+
                 {/* Inventory items section */}
                 <div className="form-group" style={{ marginTop: "0.75rem", borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
@@ -1058,7 +1127,7 @@ export default function SuppliersView() {
                             <option value="">— اختر —</option>
                             <option value="__new__">➕ جديد</option>
                             {inventoryItems.map(i => (
-                              <option key={i.itemId} value={i.itemId}>{i.itemName} ({i.availableQuantity})</option>
+                              <option key={i.itemId} value={i.itemId}>{i.itemName} ({i.availableQuantity}){inventoryAction === "restock" ? ` ↑ +${item.quantity || 0}` : ""}</option>
                             ))}
                           </select>
                         )}
@@ -1067,6 +1136,10 @@ export default function SuppliersView() {
                         <input type="number" min="1" className="form-control" value={item.quantity}
                           onChange={e => updateItem({ quantity: e.target.value })}
                           style={{ fontSize: "0.78rem", padding: "0.25rem 0.3rem", height: "auto" }} />
+                        {inventoryAction === "restock" && item.itemId && (() => {
+                          const inv = inventoryItems.find(i => i.itemId === item.itemId);
+                          return inv ? <div style={{ fontSize: "0.65rem", color: "#6366f1", lineHeight: 1.2 }}>{inv.totalQuantity}←{inv.totalQuantity + (parseInt(item.quantity) || 1)}</div> : null;
+                        })()}
                       </div>
                       <div>
                         <input type="number" min="0" step="0.01" className="form-control" value={item.unitCost}
