@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { formatCurrency, formatDateArabic } from "@/lib/utils";
 
+const SERVICE_ACCOUNT_EMAIL = "happy-land@steel-flare-475919-n8.iam.gserviceaccount.com";
+
 export default function CalendarView() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9,6 +11,22 @@ export default function CalendarView() {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [expandedBooking, setExpandedBooking] = useState(null);
   const [copySuccess, setCopySuccess] = useState("");
+
+  // Import modal state
+  const [importModal, setImportModal] = useState(false);
+  const [importCalId, setImportCalId] = useState("");
+  const [importDateFrom, setImportDateFrom] = useState("");
+  const [importDateTo, setImportDateTo] = useState("");
+  const [importedEvents, setImportedEvents] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+
+  // Export modal state
+  const [exportModal, setExportModal] = useState(false);
+  const [exportCalId, setExportCalId] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportResult, setExportResult] = useState(null);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -113,6 +131,80 @@ export default function CalendarView() {
     return `${names[m.slice(5)]} ${m.slice(0, 4)}`;
   };
 
+  const openGCal = () => {
+    window.open("https://calendar.google.com/calendar/u/0/r/month", "_blank");
+  };
+
+  // Import from external calendar
+  const handleFetchExternal = async () => {
+    if (!importCalId.trim()) { setImportError("الرجاء إدخال معرف التقويم"); return; }
+    setImportLoading(true);
+    setImportError("");
+    setImportedEvents([]);
+    try {
+      const res = await fetch("/api/calendar/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ externalCalendarId: importCalId.trim(), dateFrom: importDateFrom, dateTo: importDateTo }),
+      });
+      const data = await res.json();
+      if (data.success) setImportedEvents(data.events);
+      else setImportError(data.error || "فشل جلب الأحداث");
+    } catch { setImportError("خطأ في الاتصال"); }
+    setImportLoading(false);
+  };
+
+  const handleCreateBookingFromEvent = async (ev) => {
+    const name = prompt("اسم العميل:", ev.summary) || ev.summary;
+    if (!name) return;
+    const phone = prompt("رقم الجوال:", "");
+    if (!phone) return;
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: name,
+          customerPhone: phone,
+          startDate: ev.startDate,
+          endDate: ev.endDate,
+          totalAmount: "0",
+          paidAmount: "0",
+          bookingType: "حجز خيمة",
+          status: "قيد الانتظار",
+          notes: `مستورد من تقويم خارجي\nالحدث الأصلي: ${ev.summary}\n${ev.description}`.slice(0, 500),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportedEvents(prev => prev.filter(e => e.eventId !== ev.eventId));
+        window.location.reload();
+      } else alert("فشل إنشاء الحجز: " + (data.error || ""));
+    } catch { alert("خطأ في الاتصال"); }
+  };
+
+  // Export to external calendar
+  const handleExport = async () => {
+    if (!exportCalId.trim()) { setExportError("الرجاء إدخال معرف التقويم الهدف"); return; }
+    setExportLoading(true);
+    setExportError("");
+    setExportResult(null);
+    try {
+      const res = await fetch("/api/calendar/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetCalendarId: exportCalId.trim(),
+          bookingIds: filteredBookings.map(b => b.bookingId),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) setExportResult(data);
+      else setExportError(data.error || "فشل التصدير");
+    } catch { setExportError("خطأ في الاتصال"); }
+    setExportLoading(false);
+  };
+
   if (loading) return <div className="ops-loading"><div className="spinner" /><p>جاري تحميل التقويم...</p></div>;
 
   return (
@@ -124,8 +216,17 @@ export default function CalendarView() {
             <option value="">كل الحجوزات</option>
             {months.map(m => <option key={m} value={m}>{monthName(m)}</option>)}
           </select>
+          <button className="btn btn-outline" onClick={openGCal} title="فتح تقويم جوجل الرئيسي">
+            📅 فتح التقويم
+          </button>
+          <button className="btn btn-outline" onClick={() => setImportModal(true)}>
+            📥 استيراد
+          </button>
+          <button className="btn btn-outline" onClick={() => setExportModal(true)}>
+            📤 تصدير
+          </button>
           <button className="btn btn-primary" onClick={downloadICS} disabled={filteredBookings.length === 0}>
-            ⬇️ تصدير ICS
+            ⬇️ ICS
           </button>
         </div>
       </div>
@@ -135,6 +236,11 @@ export default function CalendarView() {
         <div className="stat-card"><span className="stat-label">إجمالي الإيرادات</span><span className="stat-value gold">{formatCurrency(summary.revenue)}</span></div>
         <div className="stat-card"><span className="stat-label">إجمالي المدفوع</span><span className="stat-value" style={{ color: "#4caf50" }}>{formatCurrency(summary.paid)}</span></div>
         <div className="stat-card"><span className="stat-label">إجمالي المتبقي</span><span className="stat-value" style={{ color: "#f44336" }}>{formatCurrency(summary.remaining)}</span></div>
+      </div>
+
+      <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem 0.75rem", borderRadius: "8px", direction: "ltr", textAlign: "left" }}>
+        🔑 البريد الإلكتروني للحساب الخدمي: <code dir="ltr">{SERVICE_ACCOUNT_EMAIL}</code>
+        <br />⚠️ لمشاركة تقويم خارجي، اذهب لإعدادات التقويم ← مشاركة ← أضف هذا البريد الإلكتروني (صلاحية: إجراء تغييرات على الأحداث)
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
@@ -193,6 +299,95 @@ export default function CalendarView() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {importModal && (
+        <div className="modal-overlay" onClick={() => setImportModal(false)}>
+          <div className="modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: "650px" }}>
+            <div className="modal-header">
+              <h3>📥 استيراد من تقويم خارجي</h3>
+              <button className="modal-close" onClick={() => setImportModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem", borderRadius: "6px" }}>
+                <strong>الشرط:</strong> يجب مشاركة التقويم الخارجي مع الحساب الخدمي <code dir="ltr" style={{ fontSize: "0.7rem" }}>{SERVICE_ACCOUNT_EMAIL}</code>
+              </div>
+              <div className="form-group">
+                <label>معرف التقويم (Calendar ID):</label>
+                <input className="form-control" dir="ltr" placeholder="example@gmail.com أو XXXXX@group.calendar.google.com"
+                  value={importCalId} onChange={e => setImportCalId(e.target.value)} />
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>من تاريخ:</label>
+                  <input className="form-control" type="date" value={importDateFrom} onChange={e => setImportDateFrom(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>إلى تاريخ:</label>
+                  <input className="form-control" type="date" value={importDateTo} onChange={e => setImportDateTo(e.target.value)} />
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={handleFetchExternal} disabled={importLoading} style={{ marginTop: "0.5rem" }}>
+                {importLoading ? "جاري الجلب..." : "🔍 جلب الأحداث"}
+              </button>
+              {importError && <div className="alert alert-danger" style={{ marginTop: "0.5rem" }}>{importError}</div>}
+
+              {importedEvents.length > 0 && (
+                <div style={{ marginTop: "1rem" }}>
+                  <h4>الأحداث المستوردة ({importedEvents.length})</h4>
+                  {importedEvents.map(ev => (
+                    <div key={ev.eventId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong>{ev.summary}</strong>
+                        <div style={{ fontSize: "0.8rem", opacity: 0.6 }}>
+                          {formatDateArabic(ev.startDate)} → {formatDateArabic(ev.endDate)}
+                          {ev.location && ` · ${ev.location}`}
+                        </div>
+                      </div>
+                      <button className="btn btn-sm btn-primary" onClick={() => handleCreateBookingFromEvent(ev)}>
+                        ➕ إنشاء حجز
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {exportModal && (
+        <div className="modal-overlay" onClick={() => setExportModal(false)}>
+          <div className="modal glass" onClick={e => e.stopPropagation()} style={{ maxWidth: "500px" }}>
+            <div className="modal-header">
+              <h3>📤 تصدير إلى تقويم خارجي</h3>
+              <button className="modal-close" onClick={() => setExportModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem", borderRadius: "6px" }}>
+                <strong>الشرط:</strong> يجب مشاركة التقويم الهدف مع الحساب الخدمي <code dir="ltr" style={{ fontSize: "0.7rem" }}>{SERVICE_ACCOUNT_EMAIL}</code>
+                <br />سيتم تصدير جميع الحجوزات المعروضة حالياً ({filteredBookings.length} حجز).
+              </div>
+              <div className="form-group">
+                <label>معرف التقويم الهدف (Target Calendar ID):</label>
+                <input className="form-control" dir="ltr" placeholder="example@gmail.com"
+                  value={exportCalId} onChange={e => setExportCalId(e.target.value)} />
+              </div>
+              {exportError && <div className="alert alert-danger">{exportError}</div>}
+              {exportResult && (
+                <div className="alert alert-success" style={{ marginTop: "0.5rem" }}>
+                  ✅ تم التصدير بنجاح: {exportResult.exported} حجز
+                  {exportResult.failed > 0 && `, فشل ${exportResult.failed} حجز`}
+                </div>
+              )}
+              <button className="btn btn-primary" onClick={handleExport} disabled={exportLoading} style={{ marginTop: "0.5rem" }}>
+                {exportLoading ? "جاري التصدير..." : "📤 تصدير الحجوزات"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
