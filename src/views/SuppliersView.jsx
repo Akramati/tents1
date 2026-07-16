@@ -38,6 +38,17 @@ export default function SuppliersView() {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [purchaseItems, setPurchaseItems] = useState([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
   const [inventoryAction, setInventoryAction] = useState("add");
+  const [viewInvoice, setViewInvoice] = useState(null);
+  const [editInvoiceMode, setEditInvoiceMode] = useState(false);
+  const [editInvoiceForm, setEditInvoiceForm] = useState({});
+  const [editInvoiceSaving, setEditInvoiceSaving] = useState(false);
+
+  useEffect(() => {
+    if (viewInvoice) {
+      setEditInvoiceForm(viewInvoice);
+      setEditInvoiceMode(false);
+    }
+  }, [viewInvoice]);
 
   // Customer receivables state
   const [activeTab, setActiveTab] = useState("suppliers");
@@ -615,6 +626,8 @@ export default function SuppliersView() {
                         <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#059669", borderColor: "#059669" }}
                           onClick={() => openPayModal(s, p)} title="تسديد">💰</button>
                       )}
+                      <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#6366f1", borderColor: "#6366f1" }}
+                        onClick={() => setViewInvoice(p)} title="عرض/تعديل">📋</button>
                       {!isCarried && userRole === "admin" && (
                         <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#dc2626", borderColor: "#dc2626" }}
                           onClick={() => setDeletePurchConfirm(p.purchaseId)} title="إلغاء">✕</button>
@@ -1551,7 +1564,153 @@ export default function SuppliersView() {
         </>
       ))}
 
-      <style>{` .table-responsive { overflow-x: auto; } .link-btn { background: none; border: none; color: var(--link); cursor: pointer; text-align: right; padding: 0; font-size: inherit; } .link-btn:hover { text-decoration: underline; } .tab-btn { padding: 0.5rem 1.2rem; cursor: pointer; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text); font-weight: bold; transition: all 0.2s; } .tab-btn.active { background: var(--gold); color: #000; border-color: var(--gold); } .tab-btn:not(.active):hover { background: rgba(255,255,255,0.1); } `}</style>
+        <style>{` .table-responsive { overflow-x: auto; } .link-btn { background: none; border: none; color: var(--link); cursor: pointer; text-align: right; padding: 0; font-size: inherit; } .link-btn:hover { text-decoration: underline; } .tab-btn { padding: 0.5rem 1.2rem; cursor: pointer; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text); font-weight: bold; transition: all 0.2s; } .tab-btn.active { background: var(--gold); color: #000; border-color: var(--gold); } .tab-btn:not(.active):hover { background: rgba(255,255,255,0.1); } `}</style>
+
+        {/* View/Edit Invoice Modal */}
+        {viewInvoice && (() => {
+          const statusLabels = { open: "مفتوحة", closed: "مسددة", cancelled: "ملغاة", carried: "مرحلة" };
+          const statusColors = { open: "#f59e0b", closed: "#059669", cancelled: "#dc2626", carried: "#6366f1" };
+          const inv = editInvoiceForm?.purchaseId === viewInvoice.purchaseId ? editInvoiceForm : viewInvoice;
+
+          const handleSave = async () => {
+            setEditInvoiceSaving(true);
+            try {
+              const tk = localStorage.getItem("token");
+              const res = await fetch("/api/finance/suppliers/purchases", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+                body: JSON.stringify({
+                  purchaseId: inv.purchaseId,
+                  description: inv.description,
+                  date: inv.date,
+                  notes: inv.notes,
+                  costCenter: inv.costCenter,
+                  accountCode: inv.accountCode,
+                  imageUrl: inv.imageUrl,
+                  inventoryItems: inv.inventoryItems,
+                  inventoryAction: "none",
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                setSuccessMsg("تم تحديث الفاتورة");
+                setViewInvoice(null);
+                fetchPurchases(selectedSupplier.supplierId);
+              } else setErrorMsg(data.error);
+            } catch { setErrorMsg("فشل التحديث"); }
+            setEditInvoiceSaving(false);
+          };
+
+          return (
+          <div className="modal-overlay" onClick={() => setViewInvoice(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", maxHeight: "85vh", overflowY: "auto" }}>
+              <div className="modal-header">
+                <h2>📄 {inv.purchaseId}</h2>
+                <span style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem", borderRadius: "4px", background: `${statusColors[inv.status]}22`, color: statusColors[inv.status], fontWeight: "bold" }}>
+                  {statusLabels[inv.status] || inv.status}
+                </span>
+                <button className="modal-close" onClick={() => setViewInvoice(null)}>✕</button>
+              </div>
+              <div className="modal-body">
+                {/* Invoice info card */}
+                <div className="card" style={{ padding: "0.75rem", marginBottom: "0.75rem" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
+                    <div><strong>التاريخ:</strong> {editInvoiceMode
+                      ? <input type="date" className="form-control" value={inv.date} onChange={e => setEditInvoiceForm({...inv, date: e.target.value})} style={{ fontSize: "0.8rem", padding: "0.2rem", height: "auto" }} />
+                      : inv.date}</div>
+                    <div><strong>المورد:</strong> {selectedSupplier?.supplierName || inv.supplierId}</div>
+                    <div style={{ gridColumn: "span 2" }}><strong>البيان:</strong> {editInvoiceMode
+                      ? <input className="form-control" value={inv.description} onChange={e => setEditInvoiceForm({...inv, description: e.target.value})} style={{ fontSize: "0.8rem", padding: "0.2rem", height: "auto", width: "100%" }} />
+                      : inv.description}</div>
+                    <div><strong>المبلغ الإجمالي:</strong> {inv.totalAmount.toLocaleString()} ر.ي</div>
+                    <div><strong>المدفوع:</strong> {inv.paidAmount.toLocaleString()} ر.ي</div>
+                    <div><strong>حساب المصروف:</strong> {editInvoiceMode
+                      ? <select className="form-control" value={inv.accountCode} onChange={e => setEditInvoiceForm({...inv, accountCode: e.target.value})} style={{ fontSize: "0.8rem", padding: "0.2rem", height: "auto" }}>
+                          <option value="">-- اختر --</option>
+                          {accounts.filter(a => (a.accountType === "expense" || a.accountType === "asset") && !a.parentCode).map(ac => (
+                            <optgroup key={ac.accountCode} label={`${ac.accountName} (${ac.accountCode})`}>
+                              {accounts.filter(c => c.parentCode === ac.accountCode && (c.accountType === "expense" || c.accountType === "asset")).map(child => (
+                                <option key={child.accountCode} value={child.accountCode}>{child.accountName} ({child.accountCode})</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      : (inv.accountCode ? `${getAccountName(inv.accountCode)} (${inv.accountCode})` : "-")}</div>
+                    <div><strong>مركز التكلفة:</strong> {editInvoiceMode
+                      ? <select className="form-control" value={inv.costCenter} onChange={e => setEditInvoiceForm({...inv, costCenter: e.target.value})} style={{ fontSize: "0.8rem", padding: "0.2rem", height: "auto" }}>
+                          <option value="">-- اختر --</option>
+                          {costCenters.filter(c => c.isActive !== false).map(cc => (
+                            <option key={cc.code} value={cc.code}>{cc.name} ({cc.code})</option>
+                          ))}
+                        </select>
+                      : inv.costCenter || "-"}</div>
+                    <div style={{ gridColumn: "span 2" }}><strong>ملاحظات:</strong> {editInvoiceMode
+                      ? <input className="form-control" value={inv.notes} onChange={e => setEditInvoiceForm({...inv, notes: e.target.value})} style={{ fontSize: "0.8rem", padding: "0.2rem", height: "auto", width: "100%" }} />
+                      : inv.notes || "-"}</div>
+                  </div>
+                </div>
+
+                {/* Inventory items */}
+                {inv.inventoryItems && inv.inventoryItems.length > 0 && (
+                  <div className="card" style={{ padding: "0.6rem", marginBottom: "0.75rem" }}>
+                    <h5 style={{ margin: "0 0 0.4rem 0", fontSize: "0.85rem" }}>📦 الأصناف</h5>
+                    <table className="inv-table" style={{ fontSize: "0.78rem" }}>
+                      <thead><tr><th>الصنف</th><th>العدد</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+                      <tbody>
+                        {inv.inventoryItems.map((item, i) => (
+                          <tr key={i}>
+                            <td>{item.itemName}</td>
+                            <td>{item.quantity}</td>
+                            <td>{item.unitCost ? item.unitCost.toLocaleString() : "-"}</td>
+                            <td>{item.amount ? item.amount.toLocaleString() : "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Transactions linked to this invoice */}
+                {transactions.filter(t => t.purchaseId === inv.purchaseId && t.type === "payment").length > 0 && (
+                  <div className="card" style={{ padding: "0.6rem", marginBottom: "0.75rem" }}>
+                    <h5 style={{ margin: "0 0 0.4rem 0", fontSize: "0.85rem" }}>💰 عمليات الدفع</h5>
+                    <table className="inv-table" style={{ fontSize: "0.78rem" }}>
+                      <thead><tr><th>التاريخ</th><th>المبلغ</th><th>البيان</th></tr></thead>
+                      <tbody>
+                        {transactions.filter(t => t.purchaseId === inv.purchaseId && t.type === "payment").map((t, i) => (
+                          <tr key={i}>
+                            <td>{t.date}</td>
+                            <td style={{ color: "#059669" }}>{t.amount.toLocaleString()}</td>
+                            <td style={{ fontSize: "0.7rem" }}>{t.notes || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Image */}
+                {inv.imageUrl && (
+                  <div style={{ marginBottom: "0.5rem" }}>
+                    <img src={inv.imageUrl} alt="فاتورة" style={{ maxWidth: "100%", maxHeight: "200px", borderRadius: "6px" }} />
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer" style={{ display: "flex", gap: "0.4rem", justifyContent: "flex-start" }}>
+                {editInvoiceMode ? (
+                  <>
+                    <button className="btn btn-primary" onClick={handleSave} disabled={editInvoiceSaving}>{editInvoiceSaving ? "..." : "💾 حفظ"}</button>
+                    <button className="btn btn-secondary" onClick={() => { setEditInvoiceMode(false); setEditInvoiceForm({ ...viewInvoice }); }}>إلغاء</button>
+                  </>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => setEditInvoiceMode(true)}>✏️ تعديل</button>
+                )}
+                <button className="btn btn-secondary" style={{ marginRight: "auto" }} onClick={() => printPurchaseStatement(viewInvoice)}>🖨️ طباعة</button>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
     </section>
   );
 }

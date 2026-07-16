@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sheets } from "@/lib/google";
-import { addFinanceEntry, deleteFinanceEntry } from "@/lib/sheets";
+import { addFinanceEntry, deleteFinanceEntry, updateFinanceEntry } from "@/lib/sheets";
 import { requireAuth, requireAdmin } from "@/lib/auth";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -18,6 +18,16 @@ export async function GET(request) {
     let rows = res.data.values || [];
     if (supplierId) rows = rows.filter((r) => r[1] === supplierId);
 
+    // Fetch ledger entries to match journalId → accountCode
+    const ledgerRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Finance_Ledger!A2:M",
+    });
+    const ledgerRows = ledgerRes.data.values || [];
+    const ledgerMap = {};
+    for (const lr of ledgerRows) {
+      if (lr[0]) ledgerMap[lr[0]] = { accountCode: lr[2] || "", costCenter: lr[8] || "" };
+    }
+
     const purchases = rows.map((r) => ({
       purchaseId: r[0],
       supplierId: r[1],
@@ -32,6 +42,7 @@ export async function GET(request) {
       imageUrl: r[9] || "",
       inventoryItems: r[10] ? (() => { try { return JSON.parse(r[10]); } catch { return []; } })() : [],
       journalId: r[11] || "",
+      accountCode: ledgerMap[r[11]]?.accountCode || "",
     }));
 
     purchases.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -123,6 +134,122 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true, message: msg });
   } catch (error) {
     console.error("DELETE /api/finance/suppliers/purchases error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// PUT /api/finance/suppliers/purchases — edit a purchase invoice
+export async function PUT(request) {
+  try {
+    const auth = requireAdmin(request);
+    if (auth.error) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+
+    const body = await request.json();
+    const { purchaseId, description, date, notes, costCenter, accountCode, imageUrl, inventoryItems, inventoryAction } = body;
+
+    if (!purchaseId) {
+      return NextResponse.json({ success: false, error: "معرف الفاتورة مطلوب" }, { status: 400 });
+    }
+
+    const pRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:L",
+    });
+    const pRows = pRes.data.values || [];
+    const pIdx = pRows.findIndex((r) => r[0] === purchaseId);
+    if (pIdx < 0) return NextResponse.json({ success: false, error: "الفاتورة غير موجودة" }, { status: 404 });
+
+    const existing = pRows[pIdx];
+    const pRow = pIdx + 1;
+    const journalId = existing[11] || "";
+
+    if (existing[8] === "cancelled") {
+      return NextResponse.json({ success: false, error: "لا يمكن تعديل فاتورة ملغاة" }, { status: 400 });
+    }
+
+    const newDate = date || existing[2] || "";
+    const newDesc = description ?? existing[3] ?? "";
+    const newNotes = notes ?? existing[7] ?? "";
+    const newCostCenter = costCenter ?? existing[6] ?? "";
+    const newImageUrl = imageUrl ?? existing[9] ?? "";
+
+    // If accountCode changed, update the Finance_Ledger entry
+    if (accountCode && journalId) {
+      await updateFinanceEntry(journalId, {
+        accountCode,
+        costCenter: newCostCenter,
+        notes: `توريد من مورد: ${existing[1]} - ${newDesc} (${purchaseId}) [${newCostCenter}]`,
+      });
+    } else if (accountCode && !journalId) {
+      // Create new ledger entry if none existed
+      const supRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: "Suppliers!A:G",
+      });
+      const supRows = supRes.data.values || [];
+      const supIdx = supRows.findIndex((r) => r[0] === existing[1]);
+      const supName = supIdx >= 0 ? supRows[supIdx][1] : existing[1];
+
+      const newJournalId = await addFinanceEntry({
+        date: newDate,
+        accountCode,
+        entryType: "expense",
+        amount: parseFloat(existing[4] || 0),
+        cashAccountCode: "2101",
+        notes: `توريد من مورد: ${supName} - ${newDesc} (${purchaseId}) [${newCostCenter}]`,
+        costCenter: newCostCenter,
+      });
+      existing[11] = newJournalId.toString();
+    }
+
+    const invItemsJson = (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0)
+      ? JSON.stringify(inventoryItems) : existing[10] || "";
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID, range: `Supplier_Purchases!A${pRow}:L${pRow}`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[purchaseId, existing[1], newDate, newDesc, existing[4], existing[5],
+          newCostCenter, newNotes, existing[8], newImageUrl, invItemsJson, existing[11]]],
+      },
+    });
+
+    // Update inventory stock if needed
+    if (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0 && inventoryAction && inventoryAction !== "none") {
+      const invStockRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A:E",
+      });
+      const invRows = invStockRes.data.values || [];
+
+      for (const item of inventoryItems) {
+        if (!item.itemName) continue;
+        const qty = parseInt(item.quantity) || 1;
+
+        if (item.itemId && inventoryAction === "restock") {
+          const invIdx = invRows.findIndex(r => r[0] === item.itemId.toString());
+          if (invIdx >= 0) {
+            const sheetRow = invIdx + 1;
+            const oldQty = parseInt(invRows[invIdx][2] || 0);
+            const newQty = oldQty + qty;
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SPREADSHEET_ID, range: `Inventory_Stock!C${sheetRow}`,
+              valueInputOption: "RAW",
+              requestBody: { values: [[newQty.toString()]] },
+            });
+          }
+        } else if (!item.itemId) {
+          let maxInv = 0;
+          for (const r of invRows) { const n = parseInt(r[0]); if (n > maxInv) maxInv = n; }
+          await sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A:D",
+            valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
+            requestBody: { values: [[(maxInv + 1).toString(), item.itemName, qty.toString(), "0"]] },
+          });
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, message: "تم تحديث الفاتورة" });
+  } catch (error) {
+    console.error("PUT /api/finance/suppliers/purchases error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
