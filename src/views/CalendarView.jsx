@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { formatCurrency, formatDateArabic } from "@/lib/utils";
 
-const SERVICE_ACCOUNT_EMAIL = "happy-land@steel-flare-475919-n8.iam.gserviceaccount.com";
+const SYSTEM_CALENDAR_ID = "0483eb0f27b59560c6b9a14c4c896284349efa9147ce9bef773557e9c7bb3b12@group.calendar.google.com";
 
 export default function CalendarView() {
   const [bookings, setBookings] = useState([]);
@@ -14,12 +14,11 @@ export default function CalendarView() {
 
   // Import modal state
   const [importModal, setImportModal] = useState(false);
-  const [importCalId, setImportCalId] = useState("");
-  const [importDateFrom, setImportDateFrom] = useState("");
-  const [importDateTo, setImportDateTo] = useState("");
+  const [importIcsUrl, setImportIcsUrl] = useState("");
   const [importedEvents, setImportedEvents] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
+  const fileInputRef = React.useRef(null);
 
   // Export modal state
   const [exportModal, setExportModal] = useState(false);
@@ -135,9 +134,9 @@ export default function CalendarView() {
     window.open("https://calendar.google.com/calendar/u/0/r/month", "_blank");
   };
 
-  // Import from external calendar
+  // Import from ICS
   const handleFetchExternal = async () => {
-    if (!importCalId.trim()) { setImportError("الرجاء إدخال معرف التقويم"); return; }
+    if (!importIcsUrl.trim()) { setImportError("الرجاء إدخال رابط ICS"); return; }
     setImportLoading(true);
     setImportError("");
     setImportedEvents([]);
@@ -145,13 +144,34 @@ export default function CalendarView() {
       const res = await fetch("/api/calendar/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ externalCalendarId: importCalId.trim(), dateFrom: importDateFrom, dateTo: importDateTo }),
+        body: JSON.stringify({ icsUrl: importIcsUrl.trim() }),
       });
       const data = await res.json();
       if (data.success) setImportedEvents(data.events);
       else setImportError(data.error || "فشل جلب الأحداث");
     } catch { setImportError("خطأ في الاتصال"); }
     setImportLoading(false);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    setImportError("");
+    setImportedEvents([]);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/calendar/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icsContent: text }),
+      });
+      const data = await res.json();
+      if (data.success) setImportedEvents(data.events);
+      else setImportError(data.error || "فشل قراءة الملف");
+    } catch { setImportError("فشل قراءة الملف"); }
+    setImportLoading(false);
+    e.target.value = "";
   };
 
   const handleCreateBookingFromEvent = async (ev) => {
@@ -238,11 +258,6 @@ export default function CalendarView() {
         <div className="stat-card"><span className="stat-label">إجمالي المتبقي</span><span className="stat-value" style={{ color: "#f44336" }}>{formatCurrency(summary.remaining)}</span></div>
       </div>
 
-      <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem 0.75rem", borderRadius: "8px", direction: "ltr", textAlign: "left" }}>
-        🔑 البريد الإلكتروني للحساب الخدمي: <code dir="ltr">{SERVICE_ACCOUNT_EMAIL}</code>
-        <br />⚠️ لمشاركة تقويم خارجي، اذهب لإعدادات التقويم ← مشاركة ← أضف هذا البريد الإلكتروني (صلاحية: إجراء تغييرات على الأحداث)
-      </div>
-
       {error && <div className="alert alert-danger">{error}</div>}
 
       {filteredBookings.length === 0 ? (
@@ -311,27 +326,29 @@ export default function CalendarView() {
               <button className="modal-close" onClick={() => setImportModal(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem", borderRadius: "6px" }}>
-                <strong>الشرط:</strong> يجب مشاركة التقويم الخارجي مع الحساب الخدمي <code dir="ltr" style={{ fontSize: "0.7rem" }}>{SERVICE_ACCOUNT_EMAIL}</code>
+              <div style={{ marginBottom: "0.75rem", fontSize: "0.85rem", background: "rgba(255,255,255,0.05)", padding: "0.75rem", borderRadius: "6px" }}>
+                <strong>طريقة 1:</strong> استخدم رابط ICS من تقويم جوجل
+                <ol style={{ margin: "0.5rem 0", paddingRight: "1.5rem", fontSize: "0.8rem" }}>
+                  <li>في إعدادات التقويم، ابحث عن <strong>"الرابط السري بتنسيق iCal"</strong></li>
+                  <li>انسخ الرابط والصقه أدناه</li>
+                </ol>
+                <strong>طريقة 2:</strong> حمّل ملف ICS من أي تقويم
               </div>
               <div className="form-group">
-                <label>معرف التقويم (Calendar ID):</label>
-                <input className="form-control" dir="ltr" placeholder="example@gmail.com أو XXXXX@group.calendar.google.com"
-                  value={importCalId} onChange={e => setImportCalId(e.target.value)} />
+                <label>رابط ICS (الرابط السري بتنسيق iCal):</label>
+                <input className="form-control" dir="ltr" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
+                  value={importIcsUrl} onChange={e => setImportIcsUrl(e.target.value)} />
               </div>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label>من تاريخ:</label>
-                  <input className="form-control" type="date" value={importDateFrom} onChange={e => setImportDateFrom(e.target.value)} />
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label>إلى تاريخ:</label>
-                  <input className="form-control" type="date" value={importDateTo} onChange={e => setImportDateTo(e.target.value)} />
-                </div>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <button className="btn btn-primary" onClick={handleFetchExternal} disabled={importLoading}>
+                  {importLoading ? "جاري الجلب..." : "🔍 جلب من الرابط"}
+                </button>
+                <span style={{ opacity: 0.5 }}>أو</span>
+                <input ref={fileInputRef} type="file" accept=".ics" onChange={handleFileUpload} style={{ display: "none" }} />
+                <button className="btn btn-outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading}>
+                  📂 رفع ملف ICS
+                </button>
               </div>
-              <button className="btn btn-primary" onClick={handleFetchExternal} disabled={importLoading} style={{ marginTop: "0.5rem" }}>
-                {importLoading ? "جاري الجلب..." : "🔍 جلب الأحداث"}
-              </button>
               {importError && <div className="alert alert-danger" style={{ marginTop: "0.5rem" }}>{importError}</div>}
 
               {importedEvents.length > 0 && (
@@ -368,7 +385,7 @@ export default function CalendarView() {
             </div>
             <div className="modal-body">
               <div style={{ marginBottom: "0.75rem", fontSize: "0.8rem", opacity: 0.7, background: "rgba(255,255,255,0.05)", padding: "0.5rem", borderRadius: "6px" }}>
-                <strong>الشرط:</strong> يجب مشاركة التقويم الهدف مع الحساب الخدمي <code dir="ltr" style={{ fontSize: "0.7rem" }}>{SERVICE_ACCOUNT_EMAIL}</code>
+                <strong>الشرط:</strong> يجب مشاركة التقويم الهدف مع الحساب الخدمي <code dir="ltr" style={{ fontSize: "0.7rem" }}>happy-land@steel-flare-475919-n8.iam.gserviceaccount.com</code>
                 <br />سيتم تصدير جميع الحجوزات المعروضة حالياً ({filteredBookings.length} حجز).
               </div>
               <div className="form-group">
