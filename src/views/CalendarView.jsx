@@ -87,6 +87,13 @@ export default function CalendarView() {
     return trimmed;
   };
 
+  const authHeaders = () => {
+    const tk = localStorage.getItem("token");
+    const h = { "Content-Type": "application/json" };
+    if (tk) h["Authorization"] = `Bearer ${tk}`;
+    return h;
+  };
+
   const persistUrls = (urls) => {
     setSavedUrls(urls);
     localStorage.setItem("calSavedUrls", JSON.stringify(urls));
@@ -99,7 +106,7 @@ export default function CalendarView() {
     try {
       const res = await fetch("/api/calendar/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ icsUrl: url }),
       });
       const data = await res.json();
@@ -135,7 +142,7 @@ export default function CalendarView() {
       const text = await file.text();
       const res = await fetch("/api/calendar/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ icsContent: text }),
       });
       const data = await res.json();
@@ -204,7 +211,7 @@ export default function CalendarView() {
     try {
       const res = await fetch("/api/calendar/export", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ targetCalendarId: exportCalId.trim(), bookingIds: filteredBookings.map(b => b.bookingId) }),
       });
       const data = await res.json();
