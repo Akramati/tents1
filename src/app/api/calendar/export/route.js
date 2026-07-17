@@ -7,7 +7,7 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 export async function POST(request) {
   try {
     const auth = await requireAuth(request);
-    if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: 401 });
+    if (!auth.user) return NextResponse.json({ success: false, error: auth.error }, { status: 401 });
 
     const { targetCalendarId, bookingIds } = await request.json();
     if (!targetCalendarId) {

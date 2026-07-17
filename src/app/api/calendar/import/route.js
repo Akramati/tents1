@@ -71,7 +71,7 @@ function parseICS(icsText) {
 export async function POST(request) {
   try {
     const auth = await requireAuth(request);
-    if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: 401 });
+    if (!auth.user) return NextResponse.json({ success: false, error: auth.error }, { status: 401 });
 
     const { icsUrl, icsContent } = await request.json();
 
