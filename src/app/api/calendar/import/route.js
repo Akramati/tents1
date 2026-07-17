@@ -39,6 +39,9 @@ function parseICS(icsText) {
     let startDate = "";
     let endDate = "";
 
+    // Detect all-day events (VALUE=DATE in the raw DTSTART line)
+    const isAllDay = block.includes("DTSTART;VALUE=DATE");
+
     const parseDate = (val) => {
       // Strip property params like ;VALUE=DATE:
       const afterSemi = val.replace(/^DTSTART(?:;[^:]*)?:/, "").replace(/^DTEND(?:;[^:]*)?:/, "");
@@ -51,8 +54,18 @@ function parseICS(icsText) {
       return "";
     };
 
+    const addDays = (dateStr, days) => {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() + days);
+      return dt.toISOString().slice(0, 10);
+    };
+
     startDate = parseDate(dtStart);
-    endDate = parseDate(dtEnd) || startDate;
+    endDate = parseDate(dtEnd);
+    if (!endDate) endDate = startDate;
+    // ICS all-day events (VALUE=DATE) use exclusive DTEND, so subtract one day
+    else if (isAllDay) endDate = addDays(endDate, -1);
 
     if (startDate) {
       events.push({

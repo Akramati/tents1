@@ -1,10 +1,12 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { formatCurrency, formatDateArabic } from "@/lib/utils";
+import { useApp } from "@/contexts/AppContext";
 
 const MAIN_CALENDAR_ID = "0483eb0f27b59560c6b9a14c4c896284349efa9147ce9bef773557e9c7bb3b12@group.calendar.google.com";
 
 export default function CalendarView() {
+  const { setView, setEditBooking } = useApp();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,6 +31,7 @@ export default function CalendarView() {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportResult, setExportResult] = useState(null);
   const [exportError, setExportError] = useState("");
+  const [bookingSearch, setBookingSearch] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -111,8 +114,10 @@ export default function CalendarView() {
         body: JSON.stringify({ icsUrl: url }),
       });
       const data = await res.json();
-      if (data.success) setExternalEvents(data.events);
-      else setExtError(data.error || "فشل جلب الأحداث");
+      if (data.success) {
+        const sorted = (data.events || []).sort((a, b) => a.startDate?.localeCompare(b.startDate));
+        setExternalEvents(sorted);
+      } else setExtError(data.error || "فشل جلب الأحداث");
     } catch { setExtError("خطأ في الاتصال"); }
     setExtLoading(false);
   };
@@ -147,36 +152,23 @@ export default function CalendarView() {
         body: JSON.stringify({ icsContent: text }),
       });
       const data = await res.json();
-      if (data.success) setExternalEvents(data.events);
-      else setExtError(data.error || "فشل قراءة الملف");
+      if (data.success) {
+        const sorted = (data.events || []).sort((a, b) => a.startDate?.localeCompare(b.startDate));
+        setExternalEvents(sorted);
+      } else setExtError(data.error || "فشل قراءة الملف");
     } catch { setExtError("فشل قراءة الملف"); }
     setExtLoading(false);
     e.target.value = "";
   };
 
-  const createBookingFromEvent = async (ev) => {
-    const name = prompt("اسم العميل:", ev.summary) || ev.summary;
-    if (!name) return;
-    const phone = prompt("رقم الجوال:", "");
-    if (!phone) return;
-    try {
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerName: name, customerPhone: phone,
-          startDate: ev.startDate, endDate: ev.endDate,
-          totalAmount: "0", paidAmount: "0",
-          bookingType: "حجز خيمة", status: "قيد الانتظار",
-          notes: `مستورد من تقويم خارجي\nالحدث الأصلي: ${ev.summary}\n${ev.description}`.slice(0, 500),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setExternalEvents(prev => prev.filter(e => e.eventId !== ev.eventId));
-        setTimeout(() => window.location.reload(), 500);
-      } else alert("فشل إنشاء الحجز: " + (data.error || ""));
-    } catch { alert("خطأ في الاتصال"); }
+  const createBookingFromEvent = (ev) => {
+    setEditBooking({
+      customerName: ev.summary,
+      startDate: ev.startDate,
+      endDate: ev.endDate,
+      notes: `مستورد من تقويم خارجي\nالحدث الأصلي: ${ev.summary}\n${ev.description}`.slice(0, 500),
+    });
+    setView("create");
   };
 
   const downloadICS = () => {
