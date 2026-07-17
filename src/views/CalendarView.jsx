@@ -162,11 +162,30 @@ export default function CalendarView() {
   };
 
   const createBookingFromEvent = (ev) => {
+    const desc = ev.description || "";
+    const location = ev.location || "";
+
+    // Extract phone from description
+    const phoneMatch = desc.match(/(?:جوال|هاتف|موبايل|رقم)\s*[:\-]?\s*(0?\d{9,10})/i) || desc.match(/(?<!\d)(05\d{8})(?!\d)/);
+    const phone = phoneMatch?.[1] || phoneMatch?.[0] || "";
+
+    // Extract amount from description
+    const amountMatch = desc.match(/المبلغ\s*[:\-]?\s*(\d+)/i) || desc.match(/(\d+)\s*ريال/i);
+    const amount = amountMatch?.[1] || "";
+
+    // Extract paid amount from description
+    const paidMatch = desc.match(/(?:مقدم|دفعة|عربون)\s*[:\-]?\s*(\d+)/i);
+    const paid = paidMatch?.[1] || "";
+
     setEditBooking({
       customerName: ev.summary,
+      customerPhone: phone,
       startDate: ev.startDate,
       endDate: ev.endDate,
-      notes: `مستورد من تقويم خارجي\nالحدث الأصلي: ${ev.summary}\n${ev.description}`.slice(0, 500),
+      totalAmount: amount,
+      paidAmount: paid,
+      customerAddress: location,
+      notes: `مستورد من تقويم خارجي\nالحدث الأصلي: ${ev.summary}\n${desc}`.slice(0, 500),
     });
     setView("create");
   };
