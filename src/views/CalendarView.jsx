@@ -115,7 +115,10 @@ export default function CalendarView() {
       });
       const data = await res.json();
       if (data.success) {
-        const sorted = (data.events || []).sort((a, b) => a.startDate?.localeCompare(b.startDate));
+        const today = new Date().toISOString().slice(0, 10);
+        const sorted = (data.events || [])
+          .filter(e => e.startDate >= today)
+          .sort((a, b) => b.startDate?.localeCompare(a.startDate));
         setExternalEvents(sorted);
       } else setExtError(data.error || "فشل جلب الأحداث");
     } catch { setExtError("خطأ في الاتصال"); }
@@ -153,7 +156,10 @@ export default function CalendarView() {
       });
       const data = await res.json();
       if (data.success) {
-        const sorted = (data.events || []).sort((a, b) => a.startDate?.localeCompare(b.startDate));
+        const today = new Date().toISOString().slice(0, 10);
+        const sorted = (data.events || [])
+          .filter(e => e.startDate >= today)
+          .sort((a, b) => b.startDate?.localeCompare(a.startDate));
         setExternalEvents(sorted);
       } else setExtError(data.error || "فشل قراءة الملف");
     } catch { setExtError("فشل قراءة الملف"); }

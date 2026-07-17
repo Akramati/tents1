@@ -49,6 +49,36 @@ export default function QueryView() {
   const [costCenterFilter, setCostCenterFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [ledgerFilterCache, setLedgerFilterCache] = useState([]);
+  const [calNotif, setCalNotif] = useState(null);
+
+  const authHeaders = () => {
+    const tk = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const h = { "Content-Type": "application/json" };
+    if (tk) h["Authorization"] = `Bearer ${tk}`;
+    return h;
+  };
+
+  // Check for new calendar events on mount
+  useEffect(() => {
+    const checkCal = async () => {
+      try {
+        const raw = localStorage.getItem("calSavedUrls");
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved.length) return;
+        const res = await fetch("/api/calendar/import", {
+          method: "POST", headers: authHeaders(),
+          body: JSON.stringify({ icsUrl: saved[0].url }),
+        });
+        const data = await res.json();
+        if (!data.success) return;
+        const today = new Date().toISOString().slice(0, 10);
+        const future = data.events.filter(e => e.startDate >= today);
+        if (future.length > 0) setCalNotif(future.length);
+      } catch {}
+    };
+    checkCal();
+  }, []);
 
   useEffect(() => {
     fetch("/api/config/fields")
@@ -279,6 +309,12 @@ export default function QueryView() {
 
   return (
     <>
+      {calNotif !== null && (
+        <div className="alert alert-info glass" style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => { setView("calendar"); setCalNotif(null); }}>
+          <span>📅 يوجد <strong>{calNotif}</strong> حدث/أحداث جديدة في التقويم الخارجي بعد تاريخ اليوم</span>
+          <button className="btn btn-sm btn-primary" style={{ marginRight: "0.5rem" }}>عرض في التقويم</button>
+        </div>
+      )}
       <section className="query-section glass">
         <div className="filter-bar">
           <div className="filter-group">
