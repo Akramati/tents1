@@ -165,6 +165,21 @@ export default function CalendarView() {
     const desc = ev.description || "";
     const location = ev.location || "";
 
+    // Check date conflicts with existing bookings
+    const conflicts = bookings.filter(b => {
+      if (!b.startDate) return false;
+      return ev.startDate <= (b.endDate || b.startDate) && ev.endDate >= b.startDate;
+    });
+
+    if (conflicts.length > 0) {
+      const msg = `⚠️ يوجد ${conflicts.length} حجز/حجوزات في نفس التاريخ:\n\n${
+        conflicts.map((b, i) =>
+          `${i+1}. ${b.customerName} (${b.startDate} → ${b.endDate || b.startDate}) - ${b.bookingType}`
+        ).join("\n")
+      }\n\nهل تريد المتابعة رغم التعارض؟`;
+      if (!confirm(msg)) return;
+    }
+
     // Extract phone from description
     const phoneMatch = desc.match(/(?:جوال|هاتف|موبايل|رقم)\s*[:\-]?\s*(0?\d{9,10})/i) || desc.match(/(?<!\d)(05\d{8})(?!\d)/);
     const phone = phoneMatch?.[1] || phoneMatch?.[0] || "";
