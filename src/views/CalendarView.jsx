@@ -76,7 +76,8 @@ export default function CalendarView() {
   const getIcsEmbedUrl = () => null;
 
   const normalizeUrl = (input) => {
-    const trimmed = input.trim();
+    const urlMatch = input.match(/https?:\/\/[^\s]+/);
+    const trimmed = urlMatch ? urlMatch[0] : input.trim();
     // Already an ICS URL
     if (trimmed.includes("/basic.ics") || trimmed.includes("/default.ics")) return trimmed;
     // Google Calendar embed URL: extract the email

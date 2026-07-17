@@ -81,14 +81,16 @@ export async function POST(request) {
     }
 
     if (icsUrl) {
+      console.log("[ICS-IMPORT] Fetching URL:", icsUrl);
       const res = await fetch(icsUrl, {
         headers: {
           "Accept": "text/calendar, */*",
           "User-Agent": "HappyLand-Booking-System/1.0",
         },
       });
+      console.log("[ICS-IMPORT] Fetch status:", res.status);
       if (!res.ok) {
-        let msg = "فشل تحميل ملف ICS من الرابط.";
+        let msg = `فشل تحميل ملف ICS من الرابط (رمز الخطأ: ${res.status}).`;
         if (res.status === 403 || res.status === 401) {
           msg += " الرابط يتطلب صلاحية أو أن التقويم غير عام. جرب:\n• الرابط السري بتنسيق iCal من إعدادات التقويم\n• أو اجعل التقويم عاماً (public)";
         } else if (res.status === 404) {
@@ -97,6 +99,7 @@ export async function POST(request) {
         return NextResponse.json({ success: false, error: msg }, { status: 400 });
       }
       const text = await res.text();
+      console.log("[ICS-IMPORT] Fetch body length:", text.length);
       if (!text.includes("BEGIN:VCALENDAR") && !text.includes("BEGIN:VEVENT")) {
         return NextResponse.json({
           success: false,
@@ -104,6 +107,7 @@ export async function POST(request) {
         }, { status: 400 });
       }
       const events = parseICS(text);
+      console.log("[ICS-IMPORT] Parsed events count:", events.length);
       return NextResponse.json({ success: true, events });
     }
 
