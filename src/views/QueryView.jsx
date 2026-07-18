@@ -66,15 +66,35 @@ export default function QueryView() {
         if (!raw) return;
         const saved = JSON.parse(raw);
         if (!saved.length) return;
-        const res = await fetch("/api/calendar/import", {
-          method: "POST", headers: authHeaders(),
-          body: JSON.stringify({ icsUrl: saved[0].url }),
-        });
-        const data = await res.json();
-        if (!data.success) return;
+        const [evRes, bkRes] = await Promise.all([
+          fetch("/api/calendar/import", {
+            method: "POST", headers: authHeaders(),
+            body: JSON.stringify({ icsUrl: saved[0].url }),
+          }),
+          fetch("/api/bookings?limit=5000"),
+        ]);
+        const evData = await evRes.json();
+        const bkData = await bkRes.json();
+        if (!evData.success) return;
         const today = new Date().toISOString().slice(0, 10);
-        const future = data.events.filter(e => e.startDate >= today);
-        if (future.length > 0) setCalNotif(future.length);
+        const allBookings = (bkData.success ? bkData.bookings || [] : []);
+        const futureEvents = evData.events.filter(e => e.startDate >= today);
+        // Match by customer name (case-insensitive) and date overlap
+        const unmatched = futureEvents.filter(ev => {
+          const evStart = ev.startDate;
+          const evEnd = ev.endDate || evStart;
+          return !allBookings.some(b => {
+            if (!b.customerName) return false;
+            const sameName = b.customerName.trim().toLowerCase() === (ev.summary || "").trim().toLowerCase();
+            if (!sameName) return false;
+            const bStart = b.startDate || "";
+            const bEnd = b.endDate || bStart;
+            return evStart <= bEnd && evEnd >= bStart;
+          });
+        });
+        if (unmatched.length > 0) {
+          setCalNotif({ count: unmatched.length, names: unmatched.map(e => e.summary).slice(0, 5) });
+        }
       } catch {}
     };
     checkCal();
@@ -311,7 +331,7 @@ export default function QueryView() {
     <>
       {calNotif !== null && (
         <div className="alert alert-info glass" style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => { setView("calendar"); setCalNotif(null); }}>
-          <span>📅 يوجد <strong>{calNotif}</strong> حدث/أحداث جديدة في التقويم الخارجي بعد تاريخ اليوم</span>
+          <span>📅 يوجد <strong>{calNotif.count}</strong> حجز/حجوزات جديدة في التقويم الخارجي ليس لها مثيل في النظام{calNotif.names.length > 0 ? <>: {calNotif.names.join("، ")}{calNotif.count > 5 ? "..." : ""}</> : ""}</span>
           <button className="btn btn-sm btn-primary" style={{ marginRight: "0.5rem" }}>عرض في التقويم</button>
         </div>
       )}

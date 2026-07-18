@@ -315,18 +315,40 @@ export default function CalendarView() {
           <div>
             <h4 style={{ fontSize: "0.9rem", marginBottom: "0.4rem" }}>الأحداث الخارجية ({externalEvents.length})</h4>
             <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-              {externalEvents.map(ev => (
-                <div key={ev.eventId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.45rem 0.5rem", borderBottom: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", marginBottom: "0.2rem", background: "rgba(255,255,255,0.02)" }}>
+              {(() => {
+                const today = new Date().toISOString().slice(0, 10);
+                const futureEvents = externalEvents.filter(e => e.startDate >= today);
+                const matchedNames = new Set();
+                futureEvents.forEach(ev => {
+                  const hasMatch = bookings.some(b => {
+                    if (!b.customerName || !ev.summary) return false;
+                    return b.customerName.trim().toLowerCase() === ev.summary.trim().toLowerCase()
+                      && ev.startDate <= (b.endDate || b.startDate) && ev.endDate >= b.startDate;
+                  });
+                  if (hasMatch) matchedNames.add(ev.summary);
+                });
+                return null;
+              })()}
+              {externalEvents.map(ev => {
+                const hasMatch = bookings.some(b => {
+                  if (!b.customerName || !ev.summary) return false;
+                  return b.customerName.trim().toLowerCase() === ev.summary.trim().toLowerCase()
+                    && ev.startDate <= (b.endDate || b.startDate) && ev.endDate >= b.startDate;
+                });
+                return (
+                <div key={ev.eventId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.45rem 0.5rem", borderBottom: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", marginBottom: "0.2rem", background: hasMatch ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.02)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <strong>{ev.summary}</strong>
+                    {hasMatch && <span style={{ fontSize: "0.7rem", color: "#22c55e", marginRight: "0.4rem" }}>✅ موجود</span>}
                     <div style={{ fontSize: "0.8rem", opacity: 0.6 }}>
                       {formatDateArabic(ev.startDate)} → {formatDateArabic(ev.endDate)}
                       {ev.location && ` · ${ev.location}`}
                     </div>
                   </div>
-                  <button className="btn btn-sm btn-primary" onClick={() => createBookingFromEvent(ev)}>➕ إنشاء حجز</button>
+                  {!hasMatch && <button className="btn btn-sm btn-primary" onClick={() => createBookingFromEvent(ev)}>➕ إنشاء حجز</button>}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
