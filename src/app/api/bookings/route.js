@@ -692,7 +692,7 @@ export async function PUT(request) {
       });
     }
 
-    // Create calendar event for rebooked / updated confirmed bookings
+    // Create or update calendar event for rebooked / updated confirmed bookings
     if (finalStatus === "مؤكد") {
       try {
         if (CALENDAR_ID) {
@@ -700,27 +700,43 @@ export async function PUT(request) {
           const endDateTime = new Date(startDate > endDate ? startDate : endDate);
           endDateTime.setDate(endDateTime.getDate() + 1);
           const calDesc = `رقم الحجز: ${bookingId}\nالعميل: ${customerName}\nرقم الجوال: ${customerPhone}\nالعنوان: ${customerAddress}\nالمبلغ الإجمالي: ${total}\nالمبلغ المقدم: ${paid}\nالمتبقي: ${remaining}\nنوع الحجز: ${bookingType}\nتاريخ الحجز: ${timestamp}\nالباقة: ${packageUsed}\nعرض الخيمة: ${tentWidth}م\nطول الخيمة: ${tentLength}م\nعدد الخيام: ${tentCount}\nنوع الفعالية: ${eventType}\nالفترة: ${shift}\nنوع التسعير: ${pricingType}\nنوع الضمان: ${depositType}\nالضامن: ${guarantorName}\nجوال الضامن: ${guarantorPhone}\nهوية الضامن: ${guarantorId}\nتكاليف النقل: ${transResponsibility}\nمبلغ النقل: ${transCost}`;
-          await calendar.events.insert({
-            calendarId: CALENDAR_ID,
-            requestBody: {
-              summary: `${bookingType === "حجز الصالة" ? "🏛️" : "⛺"} ${customerName} - ${bookingType}`,
-              description: calDesc,
-              start: { date: startDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
-              end: { date: endDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
-              extendedProperties: {
-                private: {
-                  bookingId,
-                  pricingType, depositType, guarantorName, guarantorPhone, guarantorId,
-                  transResponsibility, transCost: transCost.toString(),
-                  customerAddress, paidAmount: paid.toString(),
-                  bookingDate: timestamp, customerIdNumber,
-                },
+          const eventBody = {
+            summary: `${bookingType === "حجز الصالة" ? "🏛️" : "⛺"} ${customerName} - ${bookingType}`,
+            description: calDesc,
+            start: { date: startDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
+            end: { date: endDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
+            extendedProperties: {
+              private: {
+                bookingId,
+                pricingType, depositType, guarantorName, guarantorPhone, guarantorId,
+                transResponsibility, transCost: transCost.toString(),
+                customerAddress, paidAmount: paid.toString(),
+                bookingDate: timestamp, customerIdNumber,
               },
             },
+          };
+          // Search for existing event by bookingId
+          const existingEvRes = await calendar.events.list({
+            calendarId: CALENDAR_ID,
+            privateExtendedProperty: `bookingId=${bookingId}`,
+            maxResults: 1,
           });
+          const existingEvent = existingEvRes.data.items?.[0];
+          if (existingEvent) {
+            await calendar.events.update({
+              calendarId: CALENDAR_ID,
+              eventId: existingEvent.id,
+              requestBody: eventBody,
+            });
+          } else {
+            await calendar.events.insert({
+              calendarId: CALENDAR_ID,
+              requestBody: eventBody,
+            });
+          }
         }
       } catch (calError) {
-        console.error("Failed to create calendar event in PUT:", calError);
+        console.error("Failed to sync calendar event in PUT:", calError);
       }
     }
 
