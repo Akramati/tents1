@@ -68,3 +68,4 @@ nexterr.txt
 nextout.txt
 
 .vercel
+.env*

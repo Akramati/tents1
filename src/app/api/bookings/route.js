@@ -17,6 +17,7 @@ export async function GET(request) {
     const search = searchParams.get("search") || "";
     const dateParam = searchParams.get("date") || "";
     const showCancelled = searchParams.get("showCancelled") === "true";
+    const statusFilter = searchParams.get("status") || "";
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
@@ -109,6 +110,13 @@ export async function GET(request) {
     if (!showCancelled) {
       bookings = bookings.filter((b) => b.status !== "ملغي");
     }
+
+    if (statusFilter) {
+      bookings = bookings.filter(b => b.status === statusFilter);
+    }
+
+    // Sort by startDate ascending (nearest future first) when no custom sort params
+    bookings.sort((a, b) => a.startDate?.localeCompare(b.startDate) || 0);
 
     const totalCount = bookings.length;
     const totalPages = Math.ceil(totalCount / limit);

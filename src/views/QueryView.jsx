@@ -131,6 +131,7 @@ export default function QueryView() {
       const params = new URLSearchParams({ page: p, limit: "10" });
       if (selectedDate) params.set("date", selectedDate);
       if (searchTerm) params.set("search", searchTerm);
+      else params.set("status", "مؤكد");
       if (showCancelled) params.set("showCancelled", "true");
       const res = await fetch(`/api/bookings?${params}`);
       const data = await res.json();
