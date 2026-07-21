@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { amountInWords } from "@/lib/numberToWords";
 
 export default function SuppliersView() {
   const { print, setView, setPaymentRedirect, setErrorMsg, setSuccessMsg, userRole } = useApp();
@@ -273,16 +274,22 @@ export default function SuppliersView() {
           const carriedTotal = carryPurchases.reduce((sum, id) => sum + (openPurchases.find(o => o.purchaseId === id)?.remainingAmount || 0), 0);
           const invoiceTotal = totalAmt + carriedTotal;
           const carriedInfo = carriedTotal > 0
-            ? `\nمرحّل: ${carriedTotal.toLocaleString()} ر.ي\nالإجمالي: ${invoiceTotal.toLocaleString()} ر.ي`
+            ? `\n🔄 مرحّل: ${carriedTotal.toLocaleString()} ر.ي\nالإجمالي: ${invoiceTotal.toLocaleString()} ر.ي`
             : "";
+          const amtWords = amountInWords(invoiceTotal);
           const msg = encodeURIComponent(
             `شركة التعزي للمناسبات والتأجير\n` +
-            `فاتورة توريد جديدة\n` +
+            `━━━━━━━━━━━━━━━━\n` +
+            `📄 فاتورة توريد جديدة\n` +
+            `━━━━━━━━━━━━━━━━\n` +
             `الرقم: ${data.purchaseId}\n` +
             `البيان: ${purchaseForm.description}\n` +
             `المبلغ: ${totalAmt.toLocaleString()} ر.ي${carriedInfo}\n` +
+            `(فقط ${amtWords})\n` +
             `التاريخ: ${purchaseForm.date || new Date().toLocaleDateString("en-CA")}\n` +
-            `مركز التكلفة: ${purchaseForm.costCenter}`
+            `مركز التكلفة: ${purchaseForm.costCenter}\n` +
+            `━━━━━━━━━━━━━━━━\n` +
+            `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
           );
           window.open(`https://wa.me/${supplier.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
         }
@@ -325,21 +332,28 @@ export default function SuppliersView() {
         setSuccessMsg(`تم تسديد ${parseFloat(payAmount)} ريال للمورد ${payModal.supplierName}`);
         const amt = parseFloat(payAmount);
 
-        // Send WhatsApp to supplier
-        if (payModal.phone) {
-          const purchaseInfo = payPurchaseId
-            ? `\nفاتورة: ${payPurchaseId}`
-            : "";
-          const msg = encodeURIComponent(
-            `شركة التعزي للمناسبات والتأجير\n` +
-            `إشعار تسديد\n` +
-            `المورد: ${payModal.supplierName}\n` +
-            `المبلغ: ${amt.toLocaleString()} ر.ي${purchaseInfo}\n` +
-            `${payNotes ? `البيان: ${payNotes}\n` : ""}` +
-            `التاريخ: ${new Date().toLocaleDateString("en-CA")}`
-          );
-          window.open(`https://wa.me/${payModal.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
-        }
+          // Send WhatsApp to supplier
+          if (payModal.phone) {
+            const purchaseInfo = payPurchaseId
+              ? `\nفاتورة: ${payPurchaseId}`
+              : "";
+            const afterBalance = (payModal.balance || 0) - amt;
+            const msg = encodeURIComponent(
+              `شركة التعزي للمناسبات والتأجير\n` +
+              `━━━━━━━━━━━━━━━━\n` +
+              `💰 إشعار تسديد\n` +
+              `━━━━━━━━━━━━━━━━\n` +
+              `المورد: ${payModal.supplierName}\n` +
+              `المبلغ: ${amt.toLocaleString()} ر.ي${purchaseInfo}\n` +
+              `(فقط ${amountInWords(amt)})\n` +
+              `${payNotes ? `البيان: ${payNotes}\n` : ""}` +
+              `التاريخ: ${new Date().toLocaleDateString("en-CA")}\n` +
+              `الرصيد بعد التسديد: ${afterBalance.toLocaleString()} ر.ي\n` +
+              `━━━━━━━━━━━━━━━━\n` +
+              `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
+            );
+            window.open(`https://wa.me/${payModal.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
+          }
 
         setPayModal(null);
         setPayAmount("");
@@ -359,112 +373,191 @@ export default function SuppliersView() {
     const paymentTransactions = transactions.filter(t =>
       t.type === "payment" && (t.notes?.includes(p.purchaseId) || t.purchaseId === p.purchaseId)
     );
-    const paidTotal = paymentTransactions.reduce((s, t) => s + (t.amount || 0), 0);
-    const remaining = p.totalAmount - paidTotal;
+    const totalPaid = paymentTransactions.reduce((s, t) => s + (t.amount || 0), 0);
+    const remaining = p.totalAmount - totalPaid;
     const supplier = suppliers.find(s => s.supplierId === p.supplierId);
     const supplierName = supplier?.supplierName || selectedSupplier?.supplierName || "";
 
-    const summary = [
-      { label: "رقم الفاتورة", value: p.purchaseId },
-      { label: "التاريخ", value: p.date || "-" },
-      { label: "المورد", value: supplierName },
-      { label: "البيان", value: p.description || "-" },
-    ];
-    if (p.carriedAmount > 0) {
-      summary.push({ label: "رصيد مرحّل", value: `${p.carriedAmount.toLocaleString()} ر.ي` });
-      summary.push({ label: "قيمة جديدة", value: `${(p.totalAmount - p.carriedAmount).toLocaleString()} ر.ي` });
-    }
-    if (p.costCenter) summary.push({ label: "مركز التكلفة", value: p.costCenter });
-    if (p.accountCode) summary.push({ label: "حساب المصروف", value: getAccountName(p.accountCode) });
+    const items = [];
 
-    const headers = ["التاريخ", "البيان", "المبلغ"];
-    const rows = [];
-
-    // Invoice entry row
-    rows.push([p.date || "-", p.description || "توريد", p.totalAmount.toLocaleString()]);
+    // Invoice row
+    items.push({
+      date: p.date || "-",
+      type: "فاتورة توريد",
+      number: p.purchaseId,
+      description: p.description || "",
+      debit: p.totalAmount,
+      credit: 0,
+    });
 
     // Inventory items
     const invItems = p.inventoryItems || [];
     for (const inv of invItems) {
-      const detail = `📦 ${inv.itemName} × ${inv.quantity}${inv.unitCost > 0 ? ` @ ${inv.unitCost}` : ""}`;
-      rows.push(["-", detail, inv.amount?.toLocaleString() || "-"]);
+      items.push({
+        date: "-",
+        type: "صنف",
+        number: "",
+        description: `${inv.itemName} × ${inv.quantity}${inv.unitCost > 0 ? ` @ ${inv.unitCost.toLocaleString()}` : ""}`,
+        debit: inv.amount || 0,
+        credit: 0,
+      });
     }
-
-    // Separator
-    rows.push(["───", "───", "───"]);
 
     // Payments
     for (const pt of paymentTransactions) {
-      rows.push([pt.date || "-", `💳 تسديد${pt.notes ? ` - ${pt.notes}` : ""}`, `(${pt.amount.toLocaleString()})`]);
+      items.push({
+        date: pt.date || "-",
+        type: "تسديد",
+        number: "",
+        description: pt.notes || "تسديد",
+        debit: 0,
+        credit: pt.amount,
+      });
     }
 
-    print("REPORT_TABLE", {
+    const totalDebit = items.reduce((s, i) => s + i.debit, 0);
+    const totalCredit = items.reduce((s, i) => s + i.credit, 0);
+    const balance = totalDebit - totalCredit;
+
+    print("SUPPLIER_DOC", {
       title: `فاتورة توريد - ${p.purchaseId}`,
-      subtitle: `${supplierName} | ${p.date || ""}`,
-      summary,
-      dateHeader: p.date,
-      headers,
-      rows,
-      totals: {
-        income: paidTotal.toLocaleString(),
-        expense: remaining.toLocaleString(),
-        net: p.totalAmount.toLocaleString(),
-      },
-      totalLabels: { expense: "المتبقي", income: "المدفوع" },
-      footer: `الحالة: ${remaining <= 0 ? "مسددة ✅" : "مفتوحة 🔴"} | إجمالي الفاتورة: ${p.totalAmount.toLocaleString()} ر.ي`,
+      date: p.date,
+      partyName: supplierName,
+      partyPhone: supplier?.phone || "",
+      docNumber: p.purchaseId,
+      items,
+      totals: { debit: totalDebit, credit: totalCredit },
+      balance,
+      balanceDirection: balance > 0 ? "عليكم" : "لكم",
+      amountInWords: amountInWords(balance > 0 ? balance : -balance),
     });
   };
 
   const printSupplierStatement = (s) => {
     const paidTrans = transactions.filter(t => t.type === "payment");
     const activePurchases = purchases.filter(p => p.status !== "cancelled");
-    const rows = [];
+    const items = [];
+
+    // Collect all carry records from transactions
+    const carryTrans = transactions.filter(t => t.type === "carry");
+
     for (const p of activePurchases) {
       const payments = paidTrans.filter(t => t.purchaseId === p.purchaseId || t.notes?.includes(p.purchaseId));
       const totalPaid = payments.reduce((sum, pt) => sum + pt.amount, 0);
-      // Invoice header row
-      const carriedLabel = p.carriedAmount > 0 ? ` [مرحّل ${p.carriedAmount.toLocaleString()}]` : "";
-      rows.push([`فاتورة: ${p.purchaseId}${carriedLabel}`, p.description || "", p.date, p.totalAmount.toLocaleString(), totalPaid.toLocaleString(), (p.totalAmount - totalPaid).toLocaleString(), p.status === "closed" ? "مسددة" : "مفتوحة"]);
+
+      // Invoice row
+      items.push({
+        date: p.date || "-",
+        type: p.status === "carried" ? "مرحلة" : "فاتورة",
+        number: p.purchaseId,
+        description: p.description || "",
+        debit: p.totalAmount,
+        credit: 0,
+      });
+
+      // Carry forward records for this invoice (if any)
+      const carries = carryTrans.filter(t => t.notes?.includes(p.purchaseId));
+      for (const c of carries) {
+        items.push({
+          date: c.date || "-",
+          type: "ترحيل",
+          number: "",
+          description: c.notes || "",
+          debit: 0,
+          credit: c.amount,
+        });
+      }
+
       // Payment rows
       for (const pt of payments) {
-        rows.push(["  ↳ دفعة", pt.date, pt.amount.toLocaleString(), formatPaymentParty(pt.cashAccountCode), pt.notes || "", "", ""]);
+        items.push({
+          date: pt.date || "-",
+          type: "تسديد",
+          number: "",
+          description: pt.notes || "",
+          debit: 0,
+          credit: pt.amount,
+        });
       }
-      // Empty separator
-      rows.push(["", "", "", "", "", "", ""]);
+
+      // Separator between invoices
+      items.push({ date: "───", type: "", number: "", description: "───", debit: 0, credit: 0 });
     }
+
     // General payments
     const linkedIds = new Set(purchases.map(p => p.purchaseId));
     const generalPayments = paidTrans.filter(t => !linkedIds.has(t.purchaseId) && !t.notes?.match(/PUR-\d+/));
     for (const pt of generalPayments) {
-      rows.push([`دفعة عامة`, pt.date, pt.amount.toLocaleString(), formatPaymentParty(pt.cashAccountCode), pt.notes || "", "", ""]);
+      items.push({
+        date: pt.date || "-",
+        type: "دفعة عامة",
+        number: "",
+        description: pt.notes || "",
+        debit: 0,
+        credit: pt.amount,
+      });
     }
-    if (generalPayments.length > 0) rows.push(["", "", "", "", "", "", ""]);
+    if (generalPayments.length > 0) {
+      items.push({ date: "───", type: "", number: "", description: "───", debit: 0, credit: 0 });
+    }
 
-    const totalPurchases = activePurchases.reduce((s, p) => s + p.totalAmount, 0);
-    const totalPaidAll = paidTrans.reduce((s, pt) => s + pt.amount, 0);
-    print("REPORT_TABLE", {
+    // Carry-forward transactions not linked to purchases
+    for (const c of carryTrans) {
+      if (!linkedIds.has(c.purchaseId) && !c.notes?.match(/PUR-\d+/)) {
+        items.push({
+          date: c.date || "-",
+          type: "ترحيل",
+          number: "",
+          description: c.notes || "",
+          debit: 0,
+          credit: c.amount,
+        });
+      }
+    }
+
+    const totalDebit = items.reduce((s, i) => s + (i.debit || 0), 0);
+    const totalCredit = items.reduce((s, i) => s + (i.credit || 0), 0);
+    const balance = totalDebit - totalCredit;
+
+    print("SUPPLIER_DOC", {
       title: `كشف حساب ${s.supplierName}`,
-      subtitle: `${s.supplierName} | ${s.phone || ""}${s.address ? ` | ${s.address}` : ""}`,
-      headers: ["البيان", "التاريخ", "المبلغ", "جهة الدفع", "", "", ""],
-      rows,
-      footer: `إجمالي المشتريات: ${totalPurchases.toLocaleString()} ر.ي | إجمالي المدفوع: ${totalPaidAll.toLocaleString()} ر.ي | الرصيد الحالي: ${s.balance.toLocaleString()} ر.ي`,
+      date: new Date().toLocaleDateString("en-CA"),
+      partyName: s.supplierName,
+      partyPhone: s.phone || "",
+      docNumber: s.supplierId,
+      items: items.filter(i => i.date !== "───" || i.description !== "───"),
+      totals: { debit: totalDebit, credit: totalCredit },
+      balance: s.balance,
+      balanceDirection: s.balance > 0 ? "عليكم" : "لكم",
+      amountInWords: amountInWords(s.balance > 0 ? s.balance : -s.balance),
     });
   };
 
   const sendPurchaseWhatsApp = (p) => {
     const supplier = suppliers.find(s => s.supplierId === p.supplierId);
     if (!supplier?.phone) { setErrorMsg("لا يوجد رقم واتساب للمورد"); return; }
-    const carriedInfo = p.carriedAmount > 0 ? `\nمرحّل: ${p.carriedAmount.toLocaleString()} ر.ي\nجديد: ${(p.totalAmount - p.carriedAmount).toLocaleString()} ر.ي` : "";
+    const paymentTransactions = transactions.filter(t =>
+      t.type === "payment" && (t.notes?.includes(p.purchaseId) || t.purchaseId === p.purchaseId)
+    );
+    const totalPaid = paymentTransactions.reduce((s, t) => s + (t.amount || 0), 0);
+    const remaining = p.totalAmount - totalPaid;
+    const carriedInfo = p.carriedAmount > 0 ? `\n🔄 مرحّل: ${p.carriedAmount.toLocaleString()} ر.ي` : "";
+    const paymentsList = paymentTransactions.map(pt => `  - ${pt.date}: ${pt.amount.toLocaleString()} ر.ي${pt.notes ? ` (${pt.notes})` : ""}`).join("\n");
     const msg = encodeURIComponent(
       `شركة التعزي للمناسبات والتأجير\n` +
-      `فاتورة توريد\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `📄 فاتورة توريد\n` +
+      `━━━━━━━━━━━━━━━━\n` +
       `الرقم: ${p.purchaseId}\n` +
+      `التاريخ: ${p.date}\n` +
       `البيان: ${p.description}\n` +
       `الإجمالي: ${p.totalAmount.toLocaleString()} ر.ي${carriedInfo}\n` +
-      `المدفوع: ${p.paidAmount.toLocaleString()} ر.ي\n` +
-      `المتبقي: ${p.remainingAmount.toLocaleString()} ر.ي\n` +
-      `الحالة: ${p.status === "closed" ? "مسددة" : "مفتوحة"}\n` +
-      `التاريخ: ${p.date}`
+      `المدفوع: ${totalPaid.toLocaleString()} ر.ي\n` +
+      `المتبقي: ${remaining.toLocaleString()} ر.ي\n` +
+      `الحالة: ${remaining <= 0 ? "مسددة ✅" : "مفتوحة"}\n` +
+      `${paymentsList ? `\n💳 المدفوعات:\n${paymentsList}` : ""}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
     );
     window.open(`https://wa.me/${supplier.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
   };
@@ -561,14 +654,27 @@ export default function SuppliersView() {
           <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
             <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#6366f1", borderColor: "#6366f1" }}
               onClick={() => printSupplierStatement(s)}>🖨️ طباعة كشف حساب</button>
+            <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#6366f1", borderColor: "#6366f1" }}
+              onClick={() => printSupplierStatement(s)}>📥 تحميل المستند</button>
             {s.phone && (
               <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#25D366", borderColor: "#25D366" }}
                 onClick={() => {
+                  const totalPurch = purchases.filter(p => p.status !== "cancelled").reduce((sum, p) => sum + p.totalAmount, 0);
+                  const totalPaid = transactions.filter(t => t.type === "payment").reduce((sum, t) => sum + t.amount, 0);
+                  const carryList = transactions.filter(t => t.type === "carry");
+                  const carryTotal = carryList.reduce((sum, c) => sum + c.amount, 0);
                   const msg = encodeURIComponent(
-                    `شركة التعزي للمناسبات والتأجير\nكشف حساب ${s.supplierName}\n` +
+                    `شركة التعزي للمناسبات والتأجير\n` +
+                    `━━━━━━━━━━━━━━━━\n` +
+                    `📊 كشف حساب ${s.supplierName}\n` +
+                    `━━━━━━━━━━━━━━━━\n` +
                     `الرصيد الحالي: ${s.balance.toLocaleString()} ر.ي\n` +
-                    `آخر المعاملات:\n` +
-                    transactions.slice(0, 5).map(t => `- ${t.date}: ${t.type === "purchase" ? "توريد" : "تسديد"} ${t.amount.toLocaleString()} ر.ي`).join("\n")
+                    `إجمالي المشتريات: ${totalPurch.toLocaleString()} ر.ي\n` +
+                    `إجمالي المدفوع: ${totalPaid.toLocaleString()} ر.ي\n` +
+                    `${carryTotal > 0 ? `إجمالي المرحّل: ${carryTotal.toLocaleString()} ر.ي\n` : ""}` +
+                    `${s.phone ? `\nللتواصل: ${s.phone}` : ""}\n` +
+                    `━━━━━━━━━━━━━━━━\n` +
+                    `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
                   );
                   window.open(`https://wa.me/${s.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
                 }}>💬 واتساب</button>
@@ -638,6 +744,8 @@ export default function SuppliersView() {
                         onClick={() => printPurchaseStatement(p)} title="طباعة">🖨️</button>
                       <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#25D366", borderColor: "#25D366" }}
                         onClick={() => sendPurchaseWhatsApp(p)} title="واتساب">💬</button>
+                      <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#6366f1", borderColor: "#6366f1" }}
+                        onClick={() => printPurchaseStatement(p)} title="تحميل">📥</button>
                       {!isCarried && remaining > 0 && (
                         <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#059669", borderColor: "#059669" }}
                           onClick={() => openPayModal(s, p)} title="تسديد">💰</button>

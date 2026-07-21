@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import InvoiceLayout from "./layouts/InvoiceLayout";
 import ReportTableLayout from "./layouts/ReportTableLayout";
+import SupplierDocLayout from "./layouts/SupplierDocLayout";
 import InventoryListLayout from "./layouts/InventoryListLayout";
 import FieldItemsLayout from "./layouts/FieldItemsLayout";
 import TransferItemsLayout from "./layouts/TransferItemsLayout";
@@ -34,6 +35,8 @@ export default function PrintPreviewModal({
         return <InvoiceLayout ref={printRef} data={targetData} {...commonProps} />;
       case "REPORT_TABLE":
         return <ReportTableLayout ref={printRef} data={targetData} {...commonProps} />;
+      case "SUPPLIER_DOC":
+        return <SupplierDocLayout ref={printRef} data={targetData} {...commonProps} />;
       case "INVENTORY_LIST":
         return <InventoryListLayout ref={printRef} data={targetData} {...commonProps} />;
       case "FIELD_ITEMS":
@@ -43,6 +46,46 @@ export default function PrintPreviewModal({
       default:
         return <div style={{ padding: "2rem", textAlign: "center" }}>نوع الطباعة غير معروف: {templateType}</div>;
     }
+  };
+
+  const handleDownloadImage = async () => {
+    const el = printRef.current;
+    if (!el) return;
+    const origWidth = el.style.width;
+    el.style.width = "794px";
+    el.style.margin = "0 auto";
+    await new Promise(r => setTimeout(r, 200));
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+    el.style.width = origWidth || "";
+    el.style.margin = "";
+    const link = document.createElement("a");
+    link.download = `${documentTitle || "document"}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  const handleDownloadPdf = async () => {
+    const el = printRef.current;
+    if (!el) return;
+    const origWidth = el.style.width;
+    el.style.width = "794px";
+    el.style.margin = "0 auto";
+    await new Promise(r => setTimeout(r, 200));
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+    el.style.width = origWidth || "";
+    el.style.margin = "";
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgH = (canvas.height * pageW) / canvas.width;
+    let offset = 0;
+    while (offset < imgH) {
+      if (offset > 0) pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, -offset, pageW, imgH);
+      offset += pageH;
+    }
+    pdf.save(`${documentTitle || "document"}.pdf`);
   };
 
   const handleEmailPrint = async () => {
@@ -138,6 +181,12 @@ export default function PrintPreviewModal({
           </button>
           <button className="btn btn-gold" onClick={handleEmailPrint} disabled={emailSending}>
             {emailSending ? "⏳ جاري الإرسال..." : "📧 إرسال للطابعة (عن بعد)"}
+          </button>
+          <button className="btn" style={{ background: "#059669", color: "#fff" }} onClick={handleDownloadPdf}>
+            📄 PDF
+          </button>
+          <button className="btn" style={{ background: "#6366f1", color: "#fff" }} onClick={handleDownloadImage}>
+            🖼️ صورة
           </button>
           <button className="btn btn-secondary" onClick={onClose}>❌ إلغاء</button>
         </div>
