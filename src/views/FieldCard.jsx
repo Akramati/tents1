@@ -200,6 +200,12 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
           {isOverdue && <span className="pkg-item-tag" style={{fontSize:"0.6rem",background:"rgba(220,38,38,0.2)",color:"#dc2626",marginRight:"0.3rem"}}>{diffDays === 0 ? "🔴 آخر يوم" : "🔴 فات موعد الفك"}</span>}
           {isNearEnd && <span className="pkg-item-tag" style={{fontSize:"0.6rem",background:"rgba(245,158,11,0.2)",color:"#d97706",marginRight:"0.3rem"}}>⚠️ غداً آخر يوم</span>}
         </p>
+        {(booking.totalAmount > 0 || booking.remainingAmount > 0) && (
+          <p className="card-amounts" style={{fontSize:"0.7rem",margin:"0.15rem 0",display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+            <span>💰 <strong>{booking.totalAmount}</strong> ريال</span>
+            {booking.remainingAmount > 0 && <span style={{color:"#f59e0b"}}>📋 المتبقي: <strong>{booking.remainingAmount}</strong> ريال</span>}
+          </p>
+        )}
         {items.length > 0 && !editingItems && (
           <button className="card-toggle" onClick={() => setExpanded(!expanded)}>
             {expanded ? "▲ إخفاء المواد" : "▼ المواد المطلوبة"} ({items.length})
