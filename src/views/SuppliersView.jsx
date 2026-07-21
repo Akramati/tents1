@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { amountInWords } from "@/lib/numberToWords";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 export default function SuppliersView() {
   const { print, setView, setPaymentRedirect, setErrorMsg, setSuccessMsg, userRole } = useApp();
@@ -43,6 +45,8 @@ export default function SuppliersView() {
   const [editInvoiceMode, setEditInvoiceMode] = useState(false);
   const [editInvoiceForm, setEditInvoiceForm] = useState({});
   const [editInvoiceSaving, setEditInvoiceSaving] = useState(false);
+  const [shareModal, setShareModal] = useState(null);
+  const shareContentRef = useRef(null);
 
   useEffect(() => {
     if (viewInvoice) {
@@ -267,39 +271,20 @@ export default function SuppliersView() {
         setPurchaseItems([{ itemId: "", itemName: "", quantity: 1, unitCost: "", amount: "" }]);
         setInventoryAction("add");
 
-        // Send WhatsApp to supplier
-        const supplier = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
-        if (supplier?.phone) {
-          const totalAmt = parseFloat(purchaseForm.totalAmount);
-          const carriedTotal = carryPurchases.reduce((sum, id) => sum + (openPurchases.find(o => o.purchaseId === id)?.remainingAmount || 0), 0);
-          const invoiceTotal = totalAmt + carriedTotal;
-          const carriedInfo = carriedTotal > 0
-            ? `\n🔄 مرحّل: ${carriedTotal.toLocaleString()} ر.ي`
-            : "";
-          const amtWords = amountInWords(invoiceTotal);
-          const msg = encodeURIComponent(
-            `شركة التعزي للمناسبات والتأجير\n` +
-            `━━━━━━━━━━━━━━━━\n` +
-            `📄 فاتورة توريد جديدة\n` +
-            `━━━━━━━━━━━━━━━━\n` +
-            `الرقم: ${data.purchaseId}\n` +
-            `البيان: ${purchaseForm.description}\n` +
-            `الإجمالي علينا: ${invoiceTotal.toLocaleString()} ر.ي${carriedInfo}\n` +
-            `(فقط ${amtWords})\n` +
-            `التاريخ: ${purchaseForm.date || new Date().toLocaleDateString("en-CA")}\n` +
-            `مركز التكلفة: ${purchaseForm.costCenter}\n` +
-            `━━━━━━━━━━━━━━━━\n` +
-            `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
-          );
-          window.open(`https://wa.me/${supplier.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
-        }
-
         fetchSuppliers();
         fetchPurchases(selectedSupplier.supplierId);
         fetchTransactions(selectedSupplier.supplierId);
         if (selectedSupplier) {
           const sup = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
           if (sup) setSelectedSupplier(prev => ({ ...prev, balance: sup.balance + parseFloat(purchaseForm.totalAmount) }));
+        }
+
+        // Open share modal after saving
+        const supplier = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
+        if (supplier?.phone) {
+          setTimeout(() => {
+            setShareModal({ type: "purchase", purchase: { ...purchaseForm, purchaseId: data.purchaseId, totalAmount: parseFloat(purchaseForm.totalAmount), notes: purchaseForm.notes }, supplier: selectedSupplier, transactions, purchases, phone: supplier.phone, afterSave: true });
+          }, 300);
         }
       } else setErrorMsg(data.error);
     } catch { setErrorMsg("فشل التسجيل"); }
@@ -332,34 +317,6 @@ export default function SuppliersView() {
         setSuccessMsg(`تم تسديد ${parseFloat(payAmount)} ريال للمورد ${payModal.supplierName}`);
         const amt = parseFloat(payAmount);
 
-          // Send WhatsApp to supplier
-          if (payModal.phone) {
-            const purchaseInfo = payPurchaseId
-              ? `\nفاتورة: ${payPurchaseId}`
-              : "";
-            const afterBalance = (payModal.balance || 0) - amt;
-            const balLabel = afterBalance > 0
-              ? `\nالباقي علينا: ${afterBalance.toLocaleString()} ر.ي`
-              : afterBalance < 0
-                ? `\nالباقي لنا: ${Math.abs(afterBalance).toLocaleString()} ر.ي`
-                : `\n✅ تم تسديد كامل المبلغ`;
-            const msg = encodeURIComponent(
-              `شركة التعزي للمناسبات والتأجير\n` +
-              `━━━━━━━━━━━━━━━━\n` +
-              `💰 إشعار تسديد\n` +
-              `━━━━━━━━━━━━━━━━\n` +
-              `المورد: ${payModal.supplierName}\n` +
-              `المسدد منّا لكم: ${amt.toLocaleString()} ر.ي${purchaseInfo}\n` +
-              `(فقط ${amountInWords(amt)})\n` +
-              `${payNotes ? `البيان: ${payNotes}\n` : ""}` +
-              `التاريخ: ${new Date().toLocaleDateString("en-CA")}` +
-              `${balLabel}\n` +
-              `━━━━━━━━━━━━━━━━\n` +
-              `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
-            );
-            window.open(`https://wa.me/${payModal.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
-          }
-
         setPayModal(null);
         setPayAmount("");
         setPayNotes("");
@@ -368,6 +325,13 @@ export default function SuppliersView() {
           setSelectedSupplier(prev => ({ ...prev, balance: data.balance }));
           fetchTransactions(payModal.supplierId);
           if (payPurchaseId) fetchPurchases(payModal.supplierId);
+        }
+
+        // Open share modal after payment
+        if (payModal.phone) {
+          setTimeout(() => {
+            setShareModal({ type: "payment", amount: amt, supplier: payModal, phone: payModal.phone, purchaseId: payPurchaseId, notes: payNotes, afterSave: true });
+          }, 300);
         }
       } else setErrorMsg(data.error);
     } catch { setErrorMsg("فشل تسجيل الدفع"); }
@@ -673,27 +637,7 @@ export default function SuppliersView() {
               onClick={() => printSupplierStatement(s)}>📥 تحميل المستند</button>
             {s.phone && (
               <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#25D366", borderColor: "#25D366" }}
-                onClick={() => {
-                  const totalPurch = purchases.filter(p => p.status !== "cancelled").reduce((sum, p) => sum + p.totalAmount, 0);
-                  const totalPaid = transactions.filter(t => t.type === "payment").reduce((sum, t) => sum + t.amount, 0);
-                  const carryList = transactions.filter(t => t.type === "carry");
-                  const carryTotal = carryList.reduce((sum, c) => sum + c.amount, 0);
-                  const balLabel = s.balance > 0 ? `علينا: ${s.balance.toLocaleString()} ر.ي` : s.balance < 0 ? `لنا: ${Math.abs(s.balance).toLocaleString()} ر.ي` : "متساوي";
-                  const msg = encodeURIComponent(
-                    `شركة التعزي للمناسبات والتأجير\n` +
-                    `━━━━━━━━━━━━━━━━\n` +
-                    `📊 كشف حساب ${s.supplierName}\n` +
-                    `━━━━━━━━━━━━━━━━\n` +
-                    `إجمالي المشتريات علينا: ${totalPurch.toLocaleString()} ر.ي\n` +
-                    `إجمالي المسدد منّا: ${totalPaid.toLocaleString()} ر.ي\n` +
-                    `${carryTotal > 0 ? `إجمالي المرحّل: ${carryTotal.toLocaleString()} ر.ي\n` : ""}` +
-                    `الرصيد الحالي ${balLabel}\n` +
-                    `${s.phone ? `\nللتواصل: ${s.phone}` : ""}\n` +
-                    `━━━━━━━━━━━━━━━━\n` +
-                    `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
-                  );
-                  window.open(`https://wa.me/${s.phone.replace(/^0+/, "967")}?text=${msg}`, "_blank");
-                }}>💬 واتساب</button>
+                onClick={() => setShareModal({ type: "statement", supplier: s, transactions, purchases, phone: s.phone, supplierName: s.supplierName })}>💬 واتساب</button>
             )}
             <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#dc2626", borderColor: "#dc2626" }}
               onClick={() => setShowDeleteConfirm(s.supplierId)}>🗑️ حذف المورد</button>
@@ -759,7 +703,7 @@ export default function SuppliersView() {
                       <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem" }}
                         onClick={() => printPurchaseStatement(p)} title="طباعة">🖨️</button>
                       <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#25D366", borderColor: "#25D366" }}
-                        onClick={() => sendPurchaseWhatsApp(p)} title="واتساب">💬</button>
+                        onClick={() => setShareModal({ type: "purchase", purchase: p, supplier: selectedSupplier, transactions, purchases, phone: selectedSupplier?.phone })} title="واتساب">💬</button>
                       <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#6366f1", borderColor: "#6366f1" }}
                         onClick={() => printPurchaseStatement(p)} title="تحميل">📥</button>
                       {!isCarried && remaining > 0 && (
@@ -1851,6 +1795,245 @@ export default function SuppliersView() {
               </div>
             </div>
           </div>
+          );
+        })()}
+
+        {/* Share Modal */}
+        {shareModal && (() => {
+          const { type, purchase, supplier: s, phone, supplierName, transactions: trans, purchases: purs, amount, purchaseId, notes, afterSave } = shareModal;
+          const phoneClean = phone?.replace(/^0+/, "967") || "";
+          const shareTitle = type === "purchase" ? `فاتورة توريد${purchase?.purchaseId ? ` - ${purchase.purchaseId}` : ""}` : type === "payment" ? "إشعار تسديد" : `كشف حساب ${s?.supplierName || supplierName || ""}`;
+
+          const getTextMsg = () => {
+            if (type === "purchase") {
+              const p = purchase;
+              const totalAmt = parseFloat(p?.totalAmount) || 0;
+              const msg = `شركة التعزي للمناسبات والتأجير\n━━━━━━━━━━━━━━━━\n📄 فاتورة توريد\n━━━━━━━━━━━━━━━━\nالرقم: ${p?.purchaseId || ""}\nالبيان: ${p?.description || ""}\nالإجمالي علينا: ${totalAmt.toLocaleString()} ر.ي\nالتاريخ: ${p?.date || ""}`;
+              return encodeURIComponent(msg);
+            }
+            if (type === "payment") {
+              const amtVal = parseFloat(amount) || 0;
+              const afterBal = (s?.balance || 0) - amtVal;
+              const balTxt = afterBal > 0 ? `الباقي علينا: ${afterBal.toLocaleString()} ر.ي` : afterBal < 0 ? `الباقي لنا: ${Math.abs(afterBal).toLocaleString()} ر.ي` : "✅ تم تسديد كامل المبلغ";
+              const msg = `شركة التعزي للمناسبات والتأجير\n━━━━━━━━━━━━━━━━\n💰 إشعار تسديد\n━━━━━━━━━━━━━━━━\nالمورد: ${s?.supplierName || ""}\nالمسدد منّا لكم: ${amtVal.toLocaleString()} ر.ي${purchaseId ? `\nفاتورة: ${purchaseId}` : ""}\n(فقط ${amountInWords(amtVal)})\n${notes ? `البيان: ${notes}\n` : ""}${balTxt}`;
+              return encodeURIComponent(msg);
+            }
+            // statement
+            const totalPurch = (purs || []).filter(p => p.status !== "cancelled").reduce((sum, p) => sum + p.totalAmount, 0);
+            const totalPaid = (trans || []).filter(t => t.type === "payment").reduce((sum, t) => sum + t.amount, 0);
+            const balTxt = (s?.balance || 0) > 0 ? `علينا: ${(s?.balance || 0).toLocaleString()} ر.ي` : (s?.balance || 0) < 0 ? `لنا: ${Math.abs(s?.balance || 0).toLocaleString()} ر.ي` : "متساوي";
+            const msg = `شركة التعزي للمناسبات والتأجير\n━━━━━━━━━━━━━━━━\n📊 كشف حساب ${s?.supplierName || supplierName || ""}\n━━━━━━━━━━━━━━━━\nإجمالي المشتريات علينا: ${totalPurch.toLocaleString()} ر.ي\nإجمالي المسدد منّا: ${totalPaid.toLocaleString()} ر.ي\nالرصيد الحالي ${balTxt}`;
+            return encodeURIComponent(msg);
+          };
+
+          const handleSendText = () => {
+            window.open(`https://wa.me/${phoneClean}?text=${getTextMsg()}`, "_blank");
+            setShareModal(null);
+          };
+
+          const handleSendDoc = async (format) => {
+            if (!shareContentRef.current) return;
+            const el = shareContentRef.current;
+            el.style.display = "block";
+            el.style.position = "absolute";
+            el.style.left = "-9999px";
+            el.style.top = "0";
+            el.style.width = "794px";
+            el.style.background = "#fff";
+            el.style.color = "#111";
+            el.style.direction = "rtl";
+            el.style.fontFamily = "sans-serif";
+            el.style.padding = "1.5rem";
+            await new Promise(r => setTimeout(r, 300));
+
+            try {
+              const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+              el.style.display = "none";
+
+              if (format === "pdf") {
+                const imgData = canvas.toDataURL("image/jpeg", 0.95);
+                const pdf = new jsPDF("p", "mm", "a4");
+                const pageW = pdf.internal.pageSize.getWidth();
+                const pageH = pdf.internal.pageSize.getHeight();
+                const imgH = (canvas.height * pageW) / canvas.width;
+                let offset = 0;
+                while (offset < imgH) {
+                  if (offset > 0) pdf.addPage();
+                  pdf.addImage(imgData, "JPEG", 0, -offset, pageW, imgH);
+                  offset += pageH;
+                }
+                pdf.save(`${shareTitle}.pdf`);
+                setSuccessMsg(`✅ تم تحميل ملف PDF: ${shareTitle}.pdf`);
+              } else {
+                const link = document.createElement("a");
+                link.download = `${shareTitle}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+                setSuccessMsg(`✅ تم تحميل الصورة: ${shareTitle}.png`);
+              }
+            } catch (err) {
+              setErrorMsg("فشل إنشاء المستند: " + err.message);
+              el.style.display = "none";
+            }
+            setShareModal(null);
+          };
+
+          const renderDocContent = () => {
+            if (type === "purchase") {
+              const p = purchase;
+              const totalAmt = parseFloat(p?.totalAmount) || 0;
+              const paidTrans = (trans || []).filter(t => t.type === "payment" && (t.notes?.includes(p?.purchaseId) || t.purchaseId === p?.purchaseId));
+              const totalPaid = paidTrans.reduce((s, t) => s + (t.amount || 0), 0);
+              const remaining = totalAmt - totalPaid;
+              const isPaid = remaining <= 0;
+              const carriedNotes = p?.notes?.match(/\[مرحل من:.*?\]/)?.[0] || "";
+              return (
+                <div>
+                  <div style={{ textAlign: "center", fontSize: "1.2rem", fontWeight: "bold", marginBottom: "0.5rem" }}>شركة التعزي للمناسبات والتأجير</div>
+                  <div style={{ textAlign: "center", fontSize: "1rem", fontWeight: "bold", marginBottom: "0.8rem", color: "#1a5c3e" }}>فاتورة توريد - {p?.purchaseId}</div>
+                  <div style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>المورد: {s?.supplierName || ""}</div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", marginBottom: "0.8rem" }}>
+                    <thead><tr style={{ background: "#1a5c3e", color: "#fff" }}>
+                      <th style={{ padding: "0.3rem", border: "1px solid #ccc" }}>التاريخ</th>
+                      <th style={{ padding: "0.3rem", border: "1px solid #ccc" }}>النوع</th>
+                      <th style={{ padding: "0.3rem", border: "1px solid #ccc" }}>الرقم</th>
+                      <th style={{ padding: "0.3rem", border: "1px solid #ccc" }}>البيان</th>
+                      <th style={{ padding: "0.3rem", border: "1px solid #ccc" }}>مدين</th>
+                      <th style={{ padding: "0.3rem", border: "1px solid #ccc" }}>دائن</th>
+                    </tr></thead>
+                    <tbody>
+                      <tr><td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{p?.date || "-"}</td>
+                        <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>فاتورة توريد</td>
+                        <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{p?.purchaseId || ""}</td>
+                        <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{p?.description || ""}</td>
+                        <td style={{ padding: "0.3rem", border: "1px solid #ccc", textAlign: "center" }}>-</td>
+                        <td style={{ padding: "0.3rem", border: "1px solid #ccc", textAlign: "center", color: "#dc2626", fontWeight: "bold" }}>{totalAmt.toLocaleString()}</td>
+                      </tr>
+                      {paidTrans.map(pt => (
+                        <tr key={pt.transId}><td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{pt.date}</td>
+                          <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>تسديد</td>
+                          <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>-</td>
+                          <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{pt.notes || "تسديد"}</td>
+                          <td style={{ padding: "0.3rem", border: "1px solid #ccc", textAlign: "center", color: "#059669", fontWeight: "bold" }}>{pt.amount.toLocaleString()}</td>
+                          <td style={{ padding: "0.3rem", border: "1px solid #ccc", textAlign: "center" }}>-</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={{ borderTop: "2px solid #1a5c3e", padding: "0.5rem 0", marginTop: "0.3rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}><span>لكم:</span><span>{totalAmt.toLocaleString()}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}><span>المسدد منّا:</span><span>{totalPaid.toLocaleString()}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem", fontWeight: "bold", color: "#1a5c3e", marginTop: "0.2rem" }}>
+                      <span>{isPaid ? "مسددة" : "الإجمالي علينا"}:</span><span>{isPaid ? "0" : remaining.toLocaleString()}</span>
+                    </div>
+                    {!isPaid && <div style={{ fontSize: "0.75rem", textAlign: "center", marginTop: "0.2rem" }}>(فقط {amountInWords(remaining)})</div>}
+                  </div>
+                  <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", borderTop: "1px dashed #ccc", paddingTop: "0.5rem" }}>
+                    <div><div style={{ width: "120px", borderBottom: "1px solid #000", marginBottom: "0.2rem" }}></div><div style={{ fontSize: "0.75rem", textAlign: "center" }}>توقيع المدير</div></div>
+                    <div><div style={{ width: "120px", borderBottom: "1px solid #000", marginBottom: "0.2rem" }}></div><div style={{ fontSize: "0.75rem", textAlign: "center" }}>الختم</div></div>
+                  </div>
+                </div>
+              );
+            }
+            if (type === "payment") {
+              const amtVal = parseFloat(amount) || 0;
+              const afterBal = (s?.balance || 0) - amtVal;
+              return (
+                <div>
+                  <div style={{ textAlign: "center", fontSize: "1.2rem", fontWeight: "bold", marginBottom: "0.5rem" }}>شركة التعزي للمناسبات والتأجير</div>
+                  <div style={{ textAlign: "center", fontSize: "1rem", fontWeight: "bold", marginBottom: "0.8rem", color: "#1a5c3e" }}>إشعار تسديد</div>
+                  <div style={{ fontSize: "0.85rem", marginBottom: "0.3rem" }}>المورد: {s?.supplierName || ""}</div>
+                  <div style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>المسدد منّا لكم: {amtVal.toLocaleString()} ر.ي</div>
+                  <div style={{ fontSize: "0.8rem" }}>(فقط {amountInWords(amtVal)})</div>
+                  <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
+                    {afterBal > 0 ? `الباقي علينا: ${afterBal.toLocaleString()} ر.ي` : afterBal < 0 ? `الباقي لنا: ${Math.abs(afterBal).toLocaleString()} ر.ي` : "✅ تم تسديد كامل المبلغ"}
+                  </div>
+                  <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", borderTop: "1px dashed #ccc", paddingTop: "0.5rem" }}>
+                    <div><div style={{ width: "120px", borderBottom: "1px solid #000", marginBottom: "0.2rem" }}></div><div style={{ fontSize: "0.75rem", textAlign: "center" }}>توقيع المدير</div></div>
+                    <div><div style={{ width: "120px", borderBottom: "1px solid #000", marginBottom: "0.2rem" }}></div><div style={{ fontSize: "0.75rem", textAlign: "center" }}>الختم</div></div>
+                  </div>
+                </div>
+              );
+            }
+            // statement
+            const activePurs = (purs || []).filter(p => p.status !== "cancelled");
+            const paidTrans = (trans || []).filter(t => t.type === "payment");
+            return (
+              <div>
+                <div style={{ textAlign: "center", fontSize: "1.2rem", fontWeight: "bold", marginBottom: "0.5rem" }}>شركة التعزي للمناسبات والتأجير</div>
+                <div style={{ textAlign: "center", fontSize: "1rem", fontWeight: "bold", marginBottom: "0.8rem", color: "#1a5c3e" }}>كشف حساب {s?.supplierName || supplierName || ""}</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem", marginBottom: "0.8rem" }}>
+                  <thead><tr style={{ background: "#1a5c3e", color: "#fff" }}>
+                    <th style={{ padding: "0.25rem", border: "1px solid #ccc" }}>التاريخ</th>
+                    <th style={{ padding: "0.25rem", border: "1px solid #ccc" }}>النوع</th>
+                    <th style={{ padding: "0.25rem", border: "1px solid #ccc" }}>الرقم</th>
+                    <th style={{ padding: "0.25rem", border: "1px solid #ccc" }}>البيان</th>
+                    <th style={{ padding: "0.25rem", border: "1px solid #ccc" }}>مدين</th>
+                    <th style={{ padding: "0.25rem", border: "1px solid #ccc" }}>دائن</th>
+                  </tr></thead>
+                  <tbody>
+                    {activePurs.map(p => (
+                      <tr key={p.purchaseId}>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{p.date}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{p.status === "carried" ? "مرحلة" : "فاتورة"}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{p.purchaseId}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{p.description}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc", textAlign: "center" }}>-</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc", textAlign: "center" }}>{p.totalAmount?.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {paidTrans.map(pt => (
+                      <tr key={pt.transId}>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{pt.date}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>تسديد</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>-</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{pt.notes || ""}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc", textAlign: "center", color: "#059669" }}>{pt.amount?.toLocaleString()}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc", textAlign: "center" }}>-</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ fontSize: "0.85rem" }}>
+                  {(s?.balance || 0) > 0 ? `الرصيد الحالي علينا: ${(s?.balance || 0).toLocaleString()} ر.ي` : (s?.balance || 0) < 0 ? `الرصيد الحالي لنا: ${Math.abs(s?.balance || 0).toLocaleString()} ر.ي` : "الرصيد متساوي"}
+                </div>
+                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", borderTop: "1px dashed #ccc", paddingTop: "0.5rem" }}>
+                  <div><div style={{ width: "120px", borderBottom: "1px solid #000", marginBottom: "0.2rem" }}></div><div style={{ fontSize: "0.75rem", textAlign: "center" }}>توقيع المدير</div></div>
+                  <div><div style={{ width: "120px", borderBottom: "1px solid #000", marginBottom: "0.2rem" }}></div><div style={{ fontSize: "0.75rem", textAlign: "center" }}>الختم</div></div>
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div className="modal-overlay" onClick={() => setShareModal(null)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "420px" }}>
+                <div className="modal-header">
+                  <h2>📤 إرسال عبر واتساب</h2>
+                  <button className="modal-close" onClick={() => setShareModal(null)}>✕</button>
+                </div>
+                <div className="modal-body" style={{ textAlign: "center" }}>
+                  <p style={{ fontWeight: "bold", marginBottom: "1rem", fontSize: "0.9rem" }}>{shareTitle}</p>
+                  <p style={{ fontSize: "0.8rem", opacity: 0.6, marginBottom: "1rem" }}>إلى: {s?.supplierName || supplierName || phone}</p>
+                  <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap" }}>
+                    <button className="btn btn-gold" onClick={handleSendText} style={{ minWidth: "100px" }}>
+                      💬 إرسال نص
+                    </button>
+                    <button className="btn" style={{ background: "#059669", color: "#fff", minWidth: "100px" }} onClick={() => handleSendDoc("pdf")}>
+                      📄 إرسال PDF
+                    </button>
+                    <button className="btn" style={{ background: "#6366f1", color: "#fff", minWidth: "100px" }} onClick={() => handleSendDoc("image")}>
+                      🖼️ إرسال صورة
+                    </button>
+                  </div>
+                  <div style={{ fontSize: "0.7rem", opacity: 0.5, marginTop: "0.75rem" }}>
+                    PDF/صورة: يتم تحميل الملف تلقائياً، يمكنك إرساله عبر واتساب
+                  </div>
+                </div>
+                {/* Hidden render target */}
+                <div ref={shareContentRef} style={{ display: "none" }}>{renderDocContent()}</div>
+              </div>
+            </div>
           );
         })()}
     </section>
