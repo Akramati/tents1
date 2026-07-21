@@ -78,16 +78,16 @@ const SupplierDocLayout = forwardRef(({ data, settings, previewSettings }, ref) 
           <table>
             <tbody>
               <tr className="ps-total-income">
-                <td className="label" style={{ textAlign: "right" }}>إجمالي الدائن</td>
+                <td className="label" style={{ textAlign: "right" }}>{data.totalLabels?.creditLabel || "لكم"}</td>
                 <td className="amount">{data.totals.credit?.toLocaleString?.() || 0}</td>
               </tr>
               <tr className="ps-total-expense">
-                <td className="label" style={{ textAlign: "right" }}>إجمالي المدين</td>
+                <td className="label" style={{ textAlign: "right" }}>{data.totalLabels?.debitLabel || "المسدد منّا"}</td>
                 <td className="amount">{data.totals.debit?.toLocaleString?.() || 0}</td>
               </tr>
               <tr className="ps-total-net" style={{ borderTop: "2px solid #1a5c3e" }}>
-                <td className="label" style={{ textAlign: "right" }}>الفرق</td>
-                <td className="amount">{(data.totals.debit - data.totals.credit)?.toLocaleString?.() || 0}</td>
+                <td className="label" style={{ textAlign: "right" }}>{data.totalLabels?.netLabel || "الإجمالي"}</td>
+                <td className="amount">{(data.totals.credit - data.totals.debit)?.toLocaleString?.() || 0}</td>
               </tr>
             </tbody>
           </table>

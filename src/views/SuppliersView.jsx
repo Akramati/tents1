@@ -385,14 +385,14 @@ export default function SuppliersView() {
 
     const items = [];
 
-    // Invoice row
+    // Invoice row — ما علينا للمورد (دائن)
     items.push({
       date: p.date || "-",
       type: "فاتورة توريد",
       number: p.purchaseId,
       description: p.description || "",
-      debit: p.totalAmount,
-      credit: 0,
+      debit: 0,
+      credit: p.totalAmount,
     });
 
     // Inventory items
@@ -403,27 +403,28 @@ export default function SuppliersView() {
         type: "صنف",
         number: "",
         description: `${inv.itemName} × ${inv.quantity}${inv.unitCost > 0 ? ` @ ${inv.unitCost.toLocaleString()}` : ""}`,
-        debit: inv.amount || 0,
-        credit: 0,
+        debit: 0,
+        credit: inv.amount || 0,
       });
     }
 
-    // Payments
+    // Payments — ما دفعناه (مدين)
     for (const pt of paymentTransactions) {
       items.push({
         date: pt.date || "-",
         type: "تسديد",
         number: "",
         description: pt.notes || "تسديد",
-        debit: 0,
-        credit: pt.amount,
+        debit: pt.amount,
+        credit: 0,
       });
     }
 
-    const totalDebit = items.reduce((s, i) => s + i.debit, 0);
     const totalCredit = items.reduce((s, i) => s + i.credit, 0);
-    const balance = totalDebit - totalCredit;
+    const totalDebit = items.reduce((s, i) => s + i.debit, 0);
+    const balance = totalCredit - totalDebit;
     const isPaid = balance <= 0;
+    const netLabel = balance > 0 ? `الإجمالي علينا` : balance < 0 ? `الإجمالي لنا (عليكم)` : "مسددة";
 
     print("SUPPLIER_DOC", {
       title: `فاتورة توريد - ${p.purchaseId}`,
@@ -432,9 +433,10 @@ export default function SuppliersView() {
       partyPhone: supplier?.phone || "",
       docNumber: p.purchaseId,
       items,
-      totals: { debit: totalDebit, credit: totalCredit },
+      totals: { credit: totalCredit, debit: totalDebit },
+      totalLabels: { creditLabel: "لكم", debitLabel: "المسدد منّا", netLabel },
       balance: isPaid ? 0 : balance,
-      balanceLabel: isPaid ? "مسدد بالكامل ✅" : "الإجمالي علينا",
+      balanceLabel: isPaid ? "مسدد بالكامل ✅" : `الإجمالي علينا`,
       amountInWords: isPaid ? "" : amountInWords(balance),
     });
   };
@@ -451,17 +453,17 @@ export default function SuppliersView() {
       const payments = paidTrans.filter(t => t.purchaseId === p.purchaseId || t.notes?.includes(p.purchaseId));
       const totalPaid = payments.reduce((sum, pt) => sum + pt.amount, 0);
 
-      // Invoice row
+      // Invoice row — ما علينا للمورد (دائن)
       items.push({
         date: p.date || "-",
         type: p.status === "carried" ? "مرحلة" : "فاتورة",
         number: p.purchaseId,
         description: p.description || "",
-        debit: p.totalAmount,
-        credit: 0,
+        debit: 0,
+        credit: p.totalAmount,
       });
 
-      // Carry forward records for this invoice (if any)
+      // Carry forward records for this invoice (if any) — reduce the balance (مدين)
       const carries = carryTrans.filter(t => t.notes?.includes(p.purchaseId));
       for (const c of carries) {
         items.push({
@@ -469,20 +471,20 @@ export default function SuppliersView() {
           type: "ترحيل",
           number: "",
           description: c.notes || "",
-          debit: 0,
-          credit: c.amount,
+          debit: c.amount,
+          credit: 0,
         });
       }
 
-      // Payment rows
+      // Payment rows — ما دفعناه (مدين)
       for (const pt of payments) {
         items.push({
           date: pt.date || "-",
           type: "تسديد",
           number: "",
           description: pt.notes || "",
-          debit: 0,
-          credit: pt.amount,
+          debit: pt.amount,
+          credit: 0,
         });
       }
 
@@ -490,7 +492,7 @@ export default function SuppliersView() {
       items.push({ date: "───", type: "", number: "", description: "───", debit: 0, credit: 0 });
     }
 
-    // General payments
+    // General payments — ما دفعناه بدون ربط (مدين)
     const linkedIds = new Set(purchases.map(p => p.purchaseId));
     const generalPayments = paidTrans.filter(t => !linkedIds.has(t.purchaseId) && !t.notes?.match(/PUR-\d+/));
     for (const pt of generalPayments) {
@@ -499,15 +501,15 @@ export default function SuppliersView() {
         type: "دفعة عامة",
         number: "",
         description: pt.notes || "",
-        debit: 0,
-        credit: pt.amount,
+        debit: pt.amount,
+        credit: 0,
       });
     }
     if (generalPayments.length > 0) {
       items.push({ date: "───", type: "", number: "", description: "───", debit: 0, credit: 0 });
     }
 
-    // Carry-forward transactions not linked to purchases
+    // Carry-forward transactions not linked to purchases — مدين
     for (const c of carryTrans) {
       if (!linkedIds.has(c.purchaseId) && !c.notes?.match(/PUR-\d+/)) {
         items.push({
@@ -515,16 +517,17 @@ export default function SuppliersView() {
           type: "ترحيل",
           number: "",
           description: c.notes || "",
-          debit: 0,
-          credit: c.amount,
+          debit: c.amount,
+          credit: 0,
         });
       }
     }
 
-    const totalDebit = items.reduce((s, i) => s + (i.debit || 0), 0);
     const totalCredit = items.reduce((s, i) => s + (i.credit || 0), 0);
-    const balance = totalDebit - totalCredit;
+    const totalDebit = items.reduce((s, i) => s + (i.debit || 0), 0);
+    const net = totalCredit - totalDebit;
     const balAbs = Math.abs(s.balance);
+    const netLabel = net > 0 ? `الإجمالي علينا` : net < 0 ? `الإجمالي لنا (عليكم)` : "مسددة";
     const balLabel = s.balance > 0 ? `الرصيد الحالي علينا (لكم)` : s.balance < 0 ? `الرصيد الحالي لنا (عليكم)` : "الرصيد الحالي متساوي";
 
     print("SUPPLIER_DOC", {
@@ -534,7 +537,8 @@ export default function SuppliersView() {
       partyPhone: s.phone || "",
       docNumber: s.supplierId,
       items: items.filter(i => i.date !== "───" || i.description !== "───"),
-      totals: { debit: totalDebit, credit: totalCredit },
+      totals: { credit: totalCredit, debit: totalDebit },
+      totalLabels: { creditLabel: "لكم", debitLabel: "المسدد منّا", netLabel },
       balance: balAbs,
       balanceLabel: balLabel,
       amountInWords: balAbs > 0 ? amountInWords(balAbs) : "",
