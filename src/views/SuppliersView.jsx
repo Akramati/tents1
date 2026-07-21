@@ -638,7 +638,7 @@ export default function SuppliersView() {
                         onClick={() => printPurchaseStatement(p)} title="طباعة">🖨️</button>
                       <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#25D366", borderColor: "#25D366" }}
                         onClick={() => sendPurchaseWhatsApp(p)} title="واتساب">💬</button>
-                      {remaining > 0 && (
+                      {!isCarried && remaining > 0 && (
                         <button className="card-btn" style={{ padding: "0.1rem 0.3rem", fontSize: "0.65rem", color: "#059669", borderColor: "#059669" }}
                           onClick={() => openPayModal(s, p)} title="تسديد">💰</button>
                       )}
@@ -1238,7 +1238,7 @@ export default function SuppliersView() {
                   <select className="form-control" value={payPurchaseId}
                     onChange={e => { setPayPurchaseId(e.target.value); if (!e.target.value) setPayCostCenter(""); }}>
                     <option value="">— بدون —</option>
-                    {purchases.filter(p => p.remainingAmount > 0).map(p => (
+                    {purchases.filter(p => p.remainingAmount > 0 && p.status !== "carried").map(p => (
                       <option key={p.purchaseId} value={p.purchaseId}>{p.purchaseId} - {p.description} ({p.remainingAmount.toLocaleString()} ر.ي)</option>
                     ))}
                   </select>
