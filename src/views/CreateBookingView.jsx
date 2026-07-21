@@ -628,6 +628,14 @@ export default function CreateBookingView() {
       setErrorMsg("الرجاء ملء جميع الحقول الأساسية");
       return;
     }
+    if (!formData.totalAmount || Number(formData.totalAmount) <= 0) {
+      setErrorMsg("إجمالي المبلغ مطلوب ويجب أن يكون أكبر من صفر");
+      return;
+    }
+    if (Number(formData.paidAmount || 0) > Number(formData.totalAmount)) {
+      setErrorMsg("المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المبلغ");
+      return;
+    }
       // For non-hall bookings with packages/individual, items are required
       if (behavior !== "hall" && rentedItems.length === 0 && !["individual","hall"].includes(behavior)) {
         setErrorMsg("⚠️ لم يتم تحميل الأصناف — اختر الباقة والأبعاد أولاً");
@@ -1680,8 +1688,8 @@ export default function CreateBookingView() {
 
           {/* 7. Total + Paid */}
           <div className="form-group">
-            <label htmlFor="totalAmount">إجمالي المبلغ (ريال)</label>
-            <input type="number" id="totalAmount" name="totalAmount" value={formData.totalAmount} onChange={(e) => { if (behavior !== "individual") setFormData((prev) => ({ ...prev, totalAmount: e.target.value })); }} placeholder="مثال: 5000" className="form-control" disabled={behavior === "individual"} />
+            <label htmlFor="totalAmount">إجمالي المبلغ (ريال) <span className="required">*</span></label>
+            <input type="number" id="totalAmount" name="totalAmount" value={formData.totalAmount} onChange={(e) => { if (behavior !== "individual") setFormData((prev) => ({ ...prev, totalAmount: e.target.value })); }} placeholder="مثال: 5000" className="form-control" disabled={behavior === "individual"} required />
           </div>
           <div className="form-group">
             <label htmlFor="paidAmount">المبلغ المدفوع (مقدم)</label>

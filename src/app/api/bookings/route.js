@@ -237,6 +237,18 @@ export async function POST(request) {
 
     const total = parseFloat(totalAmount);
     const paid = parseFloat(paidAmount);
+    if (!total || total <= 0) {
+      return NextResponse.json(
+        { success: false, error: "إجمالي المبلغ مطلوب ويجب أن يكون أكبر من صفر" },
+        { status: 400 }
+      );
+    }
+    if (paid > total) {
+      return NextResponse.json(
+        { success: false, error: "المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المبلغ" },
+        { status: 400 }
+      );
+    }
     const remaining = total - paid;
     const finalStatus = paid > 0 ? status : "قيد الانتظار";
     const bookingId = `HL-${Date.now().toString().slice(-6)}`;
@@ -540,6 +552,18 @@ export async function PUT(request) {
     const sheetRow = rowIndex + 1;
     const total = parseFloat(totalAmount);
     const paid = parseFloat(paidAmount);
+    if (!total || total <= 0) {
+      return NextResponse.json(
+        { success: false, error: "إجمالي المبلغ مطلوب ويجب أن يكون أكبر من صفر" },
+        { status: 400 }
+      );
+    }
+    if (paid > total) {
+      return NextResponse.json(
+        { success: false, error: "المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المبلغ" },
+        { status: 400 }
+      );
+    }
     const remaining = total - paid;
     const finalStatus = paid > 0 ? status : "قيد الانتظار";
     const existingStatus = rows[rowIndex][8] || "";
