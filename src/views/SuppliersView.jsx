@@ -269,12 +269,18 @@ export default function SuppliersView() {
         // Send WhatsApp to supplier
         const supplier = suppliers.find(s => s.supplierId === selectedSupplier.supplierId);
         if (supplier?.phone) {
+          const totalAmt = parseFloat(purchaseForm.totalAmount);
+          const carriedTotal = carryPurchases.reduce((sum, id) => sum + (openPurchases.find(o => o.purchaseId === id)?.remainingAmount || 0), 0);
+          const invoiceTotal = totalAmt + carriedTotal;
+          const carriedInfo = carriedTotal > 0
+            ? `\nمرحّل: ${carriedTotal.toLocaleString()} ر.ي\nالإجمالي: ${invoiceTotal.toLocaleString()} ر.ي`
+            : "";
           const msg = encodeURIComponent(
             `شركة التعزي للمناسبات والتأجير\n` +
             `فاتورة توريد جديدة\n` +
             `الرقم: ${data.purchaseId}\n` +
             `البيان: ${purchaseForm.description}\n` +
-            `المبلغ: ${parseFloat(purchaseForm.totalAmount).toLocaleString()} ر.ي\n` +
+            `المبلغ: ${totalAmt.toLocaleString()} ر.ي${carriedInfo}\n` +
             `التاريخ: ${purchaseForm.date || new Date().toLocaleDateString("en-CA")}\n` +
             `مركز التكلفة: ${purchaseForm.costCenter}`
           );
@@ -364,6 +370,10 @@ export default function SuppliersView() {
       { label: "المورد", value: supplierName },
       { label: "البيان", value: p.description || "-" },
     ];
+    if (p.carriedAmount > 0) {
+      summary.push({ label: "رصيد مرحّل", value: `${p.carriedAmount.toLocaleString()} ر.ي` });
+      summary.push({ label: "قيمة جديدة", value: `${(p.totalAmount - p.carriedAmount).toLocaleString()} ر.ي` });
+    }
     if (p.costCenter) summary.push({ label: "مركز التكلفة", value: p.costCenter });
     if (p.accountCode) summary.push({ label: "حساب المصروف", value: getAccountName(p.accountCode) });
 
@@ -413,7 +423,8 @@ export default function SuppliersView() {
       const payments = paidTrans.filter(t => t.purchaseId === p.purchaseId || t.notes?.includes(p.purchaseId));
       const totalPaid = payments.reduce((sum, pt) => sum + pt.amount, 0);
       // Invoice header row
-      rows.push([`فاتورة: ${p.purchaseId}`, p.description || "", p.date, p.totalAmount.toLocaleString(), totalPaid.toLocaleString(), (p.totalAmount - totalPaid).toLocaleString(), p.status === "closed" ? "مسددة" : "مفتوحة"]);
+      const carriedLabel = p.carriedAmount > 0 ? ` [مرحّل ${p.carriedAmount.toLocaleString()}]` : "";
+      rows.push([`فاتورة: ${p.purchaseId}${carriedLabel}`, p.description || "", p.date, p.totalAmount.toLocaleString(), totalPaid.toLocaleString(), (p.totalAmount - totalPaid).toLocaleString(), p.status === "closed" ? "مسددة" : "مفتوحة"]);
       // Payment rows
       for (const pt of payments) {
         rows.push(["  ↳ دفعة", pt.date, pt.amount.toLocaleString(), formatPaymentParty(pt.cashAccountCode), pt.notes || "", "", ""]);
@@ -443,12 +454,13 @@ export default function SuppliersView() {
   const sendPurchaseWhatsApp = (p) => {
     const supplier = suppliers.find(s => s.supplierId === p.supplierId);
     if (!supplier?.phone) { setErrorMsg("لا يوجد رقم واتساب للمورد"); return; }
+    const carriedInfo = p.carriedAmount > 0 ? `\nمرحّل: ${p.carriedAmount.toLocaleString()} ر.ي\nجديد: ${(p.totalAmount - p.carriedAmount).toLocaleString()} ر.ي` : "";
     const msg = encodeURIComponent(
       `شركة التعزي للمناسبات والتأجير\n` +
       `فاتورة توريد\n` +
       `الرقم: ${p.purchaseId}\n` +
       `البيان: ${p.description}\n` +
-      `الإجمالي: ${p.totalAmount.toLocaleString()} ر.ي\n` +
+      `الإجمالي: ${p.totalAmount.toLocaleString()} ر.ي${carriedInfo}\n` +
       `المدفوع: ${p.paidAmount.toLocaleString()} ر.ي\n` +
       `المتبقي: ${p.remainingAmount.toLocaleString()} ر.ي\n` +
       `الحالة: ${p.status === "closed" ? "مسددة" : "مفتوحة"}\n` +
@@ -576,6 +588,8 @@ export default function SuppliersView() {
                 <th>التاريخ</th>
                 <th>البيان</th>
                 <th>الإجمالي</th>
+                <th>المرحّل</th>
+                <th>الجديد</th>
                 <th>المدفوع</th>
                 <th>المتبقي</th>
                 <th>مركز التكلفة</th>
@@ -595,6 +609,8 @@ export default function SuppliersView() {
                   <td style={{ fontSize: "0.75rem" }}>{p.date}</td>
                   <td>{p.description}{isCarried && <span style={{ fontSize: "0.65rem", opacity: 0.5, marginRight: "0.3rem" }}>(مرحلة)</span>}</td>
                   <td style={{ fontWeight: "bold" }}>{p.totalAmount.toLocaleString()}</td>
+                  <td style={{ color: "#6366f1", fontSize: "0.75rem" }}>{p.carriedAmount > 0 ? p.carriedAmount.toLocaleString() : "-"}</td>
+                  <td style={{ fontSize: "0.75rem" }}>{(p.totalAmount - (p.carriedAmount || 0)).toLocaleString()}</td>
                   <td style={{ color: "#059669" }}>{p.paidAmount.toLocaleString()}</td>
                   <td style={{ fontWeight: "bold", color: remaining > 0 ? "#dc2626" : "#059669" }}>{remaining.toLocaleString()}</td>
                   <td style={{ fontSize: "0.75rem" }}>{p.costCenter || "-"}</td>
@@ -638,7 +654,7 @@ export default function SuppliersView() {
                 );
               })}
               {purchases.filter(p => p.status !== "cancelled").length === 0 && (
-                <tr><td colSpan="10" style={{ textAlign: "center", padding: "0.75rem" }}>لا توجد فواتير</td></tr>
+                <tr><td colSpan="12" style={{ textAlign: "center", padding: "0.75rem" }}>لا توجد فواتير</td></tr>
               )}
             </tbody>
           </table>
@@ -746,6 +762,8 @@ export default function SuppliersView() {
                     {/* Summary row */}
                     <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem", fontSize: "0.78rem" }}>
                       <span>الإجمالي: <strong>{p.totalAmount?.toLocaleString() || 0}</strong></span>
+                      {p.carriedAmount > 0 && <span style={{ color: "#6366f1" }}>المرحّل: <strong>{p.carriedAmount.toLocaleString()}</strong></span>}
+                      {p.carriedAmount > 0 && <span style={{ color: "#6b7280" }}>الجديد: <strong>{(p.totalAmount - p.carriedAmount).toLocaleString()}</strong></span>}
                       <span style={{ color: "#059669" }}>المدفوع: <strong>{totalPaid.toLocaleString()}</strong></span>
                       <span style={{ color: "#dc2626" }}>المتبقي: <strong>{remaining.toLocaleString()}</strong></span>
                     </div>

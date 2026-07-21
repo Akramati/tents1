@@ -13,7 +13,7 @@ export async function GET(request) {
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Supplier_Purchases!A2:L",
+      range: "Supplier_Purchases!A2:M",
     });
     let rows = res.data.values || [];
     if (supplierId) rows = rows.filter((r) => r[1] === supplierId);
@@ -35,6 +35,8 @@ export async function GET(request) {
       description: r[3] || "",
       totalAmount: parseFloat(r[4] || 0),
       paidAmount: parseFloat(r[5] || 0),
+      carriedAmount: parseFloat(r[12] || 0), // Column M
+      newAmount: parseFloat(r[4] || 0) - parseFloat(r[12] || 0),
       remainingAmount: parseFloat(r[4] || 0) - parseFloat(r[5] || 0),
       costCenter: r[6] || "",
       notes: r[7] || "",
@@ -344,12 +346,13 @@ export async function POST(request) {
 
     const invItemsJson = (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0)
       ? JSON.stringify(inventoryItems) : "";
+    const invoiceTotal = amt + carriedTotal; // Include carried amounts in invoice total
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:L",
+      spreadsheetId: SPREADSHEET_ID, range: "Supplier_Purchases!A:M",
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [[newPurchId, supplierId, date || new Date().toLocaleDateString("en-CA"),
-          description, amt.toString(), "0", costCenter, fullNotes, "open", imageUrl || "", invItemsJson, journalId.toString()]],
+          description, invoiceTotal.toString(), "0", costCenter, fullNotes, "open", imageUrl || "", invItemsJson, journalId.toString(), carriedTotal > 0 ? carriedTotal.toString() : "0"]],
       },
     });
 
