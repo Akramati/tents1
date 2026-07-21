@@ -16,8 +16,7 @@ const SupplierDocLayout = forwardRef(({ data, settings, previewSettings }, ref) 
     catch { return dateStr; }
   };
 
-  const dir = data.balanceDirection === "عليكم" ? "عليكم" : "لكم";
-  const balLabel = dir === "عليكم" ? "الرصيد الحالي عليكم" : "الرصيد الحالي لكم";
+  const balLabel = data.balanceLabel || "الرصيد الحالي";
 
   return (
     <div ref={ref} className="ps-root" dir="rtl">

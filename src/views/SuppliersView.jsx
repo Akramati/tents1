@@ -274,7 +274,7 @@ export default function SuppliersView() {
           const carriedTotal = carryPurchases.reduce((sum, id) => sum + (openPurchases.find(o => o.purchaseId === id)?.remainingAmount || 0), 0);
           const invoiceTotal = totalAmt + carriedTotal;
           const carriedInfo = carriedTotal > 0
-            ? `\n🔄 مرحّل: ${carriedTotal.toLocaleString()} ر.ي\nالإجمالي: ${invoiceTotal.toLocaleString()} ر.ي`
+            ? `\n🔄 مرحّل: ${carriedTotal.toLocaleString()} ر.ي`
             : "";
           const amtWords = amountInWords(invoiceTotal);
           const msg = encodeURIComponent(
@@ -284,7 +284,7 @@ export default function SuppliersView() {
             `━━━━━━━━━━━━━━━━\n` +
             `الرقم: ${data.purchaseId}\n` +
             `البيان: ${purchaseForm.description}\n` +
-            `المبلغ: ${totalAmt.toLocaleString()} ر.ي${carriedInfo}\n` +
+            `الإجمالي علينا: ${invoiceTotal.toLocaleString()} ر.ي${carriedInfo}\n` +
             `(فقط ${amtWords})\n` +
             `التاريخ: ${purchaseForm.date || new Date().toLocaleDateString("en-CA")}\n` +
             `مركز التكلفة: ${purchaseForm.costCenter}\n` +
@@ -338,17 +338,22 @@ export default function SuppliersView() {
               ? `\nفاتورة: ${payPurchaseId}`
               : "";
             const afterBalance = (payModal.balance || 0) - amt;
+            const balLabel = afterBalance > 0
+              ? `\nالباقي علينا: ${afterBalance.toLocaleString()} ر.ي`
+              : afterBalance < 0
+                ? `\nالباقي لنا: ${Math.abs(afterBalance).toLocaleString()} ر.ي`
+                : `\n✅ تم تسديد كامل المبلغ`;
             const msg = encodeURIComponent(
               `شركة التعزي للمناسبات والتأجير\n` +
               `━━━━━━━━━━━━━━━━\n` +
               `💰 إشعار تسديد\n` +
               `━━━━━━━━━━━━━━━━\n` +
               `المورد: ${payModal.supplierName}\n` +
-              `المبلغ: ${amt.toLocaleString()} ر.ي${purchaseInfo}\n` +
+              `المسدد منّا لكم: ${amt.toLocaleString()} ر.ي${purchaseInfo}\n` +
               `(فقط ${amountInWords(amt)})\n` +
               `${payNotes ? `البيان: ${payNotes}\n` : ""}` +
-              `التاريخ: ${new Date().toLocaleDateString("en-CA")}\n` +
-              `الرصيد بعد التسديد: ${afterBalance.toLocaleString()} ر.ي\n` +
+              `التاريخ: ${new Date().toLocaleDateString("en-CA")}` +
+              `${balLabel}\n` +
               `━━━━━━━━━━━━━━━━\n` +
               `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
             );
@@ -418,6 +423,7 @@ export default function SuppliersView() {
     const totalDebit = items.reduce((s, i) => s + i.debit, 0);
     const totalCredit = items.reduce((s, i) => s + i.credit, 0);
     const balance = totalDebit - totalCredit;
+    const isPaid = balance <= 0;
 
     print("SUPPLIER_DOC", {
       title: `فاتورة توريد - ${p.purchaseId}`,
@@ -427,9 +433,9 @@ export default function SuppliersView() {
       docNumber: p.purchaseId,
       items,
       totals: { debit: totalDebit, credit: totalCredit },
-      balance,
-      balanceDirection: balance > 0 ? "عليكم" : "لكم",
-      amountInWords: amountInWords(balance > 0 ? balance : -balance),
+      balance: isPaid ? 0 : balance,
+      balanceLabel: isPaid ? "مسدد بالكامل ✅" : "الإجمالي علينا",
+      amountInWords: isPaid ? "" : amountInWords(balance),
     });
   };
 
@@ -518,6 +524,8 @@ export default function SuppliersView() {
     const totalDebit = items.reduce((s, i) => s + (i.debit || 0), 0);
     const totalCredit = items.reduce((s, i) => s + (i.credit || 0), 0);
     const balance = totalDebit - totalCredit;
+    const balAbs = Math.abs(s.balance);
+    const balLabel = s.balance > 0 ? `الرصيد الحالي علينا (لكم)` : s.balance < 0 ? `الرصيد الحالي لنا (عليكم)` : "الرصيد الحالي متساوي";
 
     print("SUPPLIER_DOC", {
       title: `كشف حساب ${s.supplierName}`,
@@ -527,9 +535,9 @@ export default function SuppliersView() {
       docNumber: s.supplierId,
       items: items.filter(i => i.date !== "───" || i.description !== "───"),
       totals: { debit: totalDebit, credit: totalCredit },
-      balance: s.balance,
-      balanceDirection: s.balance > 0 ? "عليكم" : "لكم",
-      amountInWords: amountInWords(s.balance > 0 ? s.balance : -s.balance),
+      balance: balAbs,
+      balanceLabel: balLabel,
+      amountInWords: balAbs > 0 ? amountInWords(balAbs) : "",
     });
   };
 
@@ -543,6 +551,10 @@ export default function SuppliersView() {
     const remaining = p.totalAmount - totalPaid;
     const carriedInfo = p.carriedAmount > 0 ? `\n🔄 مرحّل: ${p.carriedAmount.toLocaleString()} ر.ي` : "";
     const paymentsList = paymentTransactions.map(pt => `  - ${pt.date}: ${pt.amount.toLocaleString()} ر.ي${pt.notes ? ` (${pt.notes})` : ""}`).join("\n");
+    const amtWords = amountInWords(remaining > 0 ? remaining : p.totalAmount);
+    const statusLine = remaining > 0
+      ? `\nالمتبقي علينا: ${remaining.toLocaleString()} ر.ي\n(فقط ${amtWords})`
+      : `\n✅ مسدد بالكامل`;
     const msg = encodeURIComponent(
       `شركة التعزي للمناسبات والتأجير\n` +
       `━━━━━━━━━━━━━━━━\n` +
@@ -551,10 +563,9 @@ export default function SuppliersView() {
       `الرقم: ${p.purchaseId}\n` +
       `التاريخ: ${p.date}\n` +
       `البيان: ${p.description}\n` +
-      `الإجمالي: ${p.totalAmount.toLocaleString()} ر.ي${carriedInfo}\n` +
-      `المدفوع: ${totalPaid.toLocaleString()} ر.ي\n` +
-      `المتبقي: ${remaining.toLocaleString()} ر.ي\n` +
-      `الحالة: ${remaining <= 0 ? "مسددة ✅" : "مفتوحة"}\n` +
+      `الإجمالي علينا: ${p.totalAmount.toLocaleString()} ر.ي${carriedInfo}\n` +
+      `المسدد منّا: ${totalPaid.toLocaleString()} ر.ي\n` +
+      `${statusLine}\n` +
       `${paymentsList ? `\n💳 المدفوعات:\n${paymentsList}` : ""}\n` +
       `━━━━━━━━━━━━━━━━\n` +
       `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
@@ -663,15 +674,16 @@ export default function SuppliersView() {
                   const totalPaid = transactions.filter(t => t.type === "payment").reduce((sum, t) => sum + t.amount, 0);
                   const carryList = transactions.filter(t => t.type === "carry");
                   const carryTotal = carryList.reduce((sum, c) => sum + c.amount, 0);
+                  const balLabel = s.balance > 0 ? `علينا: ${s.balance.toLocaleString()} ر.ي` : s.balance < 0 ? `لنا: ${Math.abs(s.balance).toLocaleString()} ر.ي` : "متساوي";
                   const msg = encodeURIComponent(
                     `شركة التعزي للمناسبات والتأجير\n` +
                     `━━━━━━━━━━━━━━━━\n` +
                     `📊 كشف حساب ${s.supplierName}\n` +
                     `━━━━━━━━━━━━━━━━\n` +
-                    `الرصيد الحالي: ${s.balance.toLocaleString()} ر.ي\n` +
-                    `إجمالي المشتريات: ${totalPurch.toLocaleString()} ر.ي\n` +
-                    `إجمالي المدفوع: ${totalPaid.toLocaleString()} ر.ي\n` +
+                    `إجمالي المشتريات علينا: ${totalPurch.toLocaleString()} ر.ي\n` +
+                    `إجمالي المسدد منّا: ${totalPaid.toLocaleString()} ر.ي\n` +
                     `${carryTotal > 0 ? `إجمالي المرحّل: ${carryTotal.toLocaleString()} ر.ي\n` : ""}` +
+                    `الرصيد الحالي ${balLabel}\n` +
                     `${s.phone ? `\nللتواصل: ${s.phone}` : ""}\n` +
                     `━━━━━━━━━━━━━━━━\n` +
                     `📥 المستند متاح للتحميل بصيغة PDF أو صورة`
