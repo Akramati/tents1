@@ -1406,20 +1406,23 @@ export default function SuppliersView() {
                     formatCurrency(b.remainingAmount || 0),
                     b.status || "",
                   ]);
-                  // Item details (if any)
-                  const items = b.rentedItems || [];
-                  for (const item of items) {
-                    const itemTotal = (item.quantityRequested || 0) * (item.unitPrice || 0);
-                    rows.push([
-                      "",
-                      "",
-                      `📦 ${item.itemName}`,
-                      `×${item.quantityRequested} @ ${formatCurrency(item.unitPrice)}`,
-                      formatCurrency(itemTotal),
-                      "",
-                      "",
-                      "",
-                    ]);
+                  // Item details (only for non-package bookings)
+                  const isPackage = !!(b.packageUsed || b.tentWidth || b.tentLength);
+                  if (!isPackage) {
+                    const items = b.rentedItems || [];
+                    for (const item of items) {
+                      const itemTotal = (item.quantityRequested || 0) * (item.unitPrice || 0);
+                      rows.push([
+                        "",
+                        "",
+                        `📦 ${item.itemName}`,
+                        `×${item.quantityRequested} @ ${formatCurrency(item.unitPrice)}`,
+                        formatCurrency(itemTotal),
+                        "",
+                        "",
+                        "",
+                      ]);
+                    }
                   }
                 }
                 print("REPORT_TABLE", {
