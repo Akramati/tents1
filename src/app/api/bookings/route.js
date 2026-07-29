@@ -85,6 +85,28 @@ export async function GET(request) {
       guarantorIdPhoto: row[31] || "",
     }));
 
+    // Enrich with rented items
+    const [rentRows, invStockRows] = await Promise.all([
+      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: "Rented_Items!A2:E" }).then(r => r.data.values || []).catch(() => []),
+      sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: "Inventory_Stock!A2:B" }).then(r => r.data.values || []).catch(() => []),
+    ]);
+    const invMap = {};
+    for (const r of invStockRows) invMap[r[0]] = r[1] || "";
+    const rentedItemsMap = {};
+    for (const r of rentRows) {
+      const bookingId = r[1];
+      if (!bookingId) continue;
+      if (!rentedItemsMap[bookingId]) rentedItemsMap[bookingId] = [];
+      rentedItemsMap[bookingId].push({
+        id: r[0],
+        itemId: r[2],
+        itemName: invMap[r[2]] || `صنف #${r[2]}`,
+        quantityRequested: parseInt(r[3] || 0),
+        unitPrice: parseFloat(r[4] || 0),
+      });
+    }
+    bookings = bookings.map(b => ({ ...b, rentedItems: rentedItemsMap[b.bookingId] || [] }));
+
     if (dateParam) {
       bookings = bookings.filter((b) => {
         if (!b.startDate || !b.endDate) return false;

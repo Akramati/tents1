@@ -1389,19 +1389,44 @@ export default function SuppliersView() {
           <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
             <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#6366f1", borderColor: "#6366f1" }}
               onClick={() => {
-                print("REPORT_TABLE", {
-                  title: `كشف حساب ${c.customerName}`,
-                  subtitle: `${c.customerPhone || ""}`,
-                  headers: ["رقم الحجز", "التاريخ", "النوع", "الإجمالي", "المدفوع", "المتبقي", "الحالة"],
-                  rows: c.bookings.map(b => [
+                const headers = ["رقم الحجز", "التاريخ", "النوع", "التفاصيل", "الإجمالي", "المدفوع", "المتبقي", "الحالة"];
+                const rows = [];
+                for (const b of c.bookings) {
+                  // Main booking row
+                  const typeDetail = b.packageUsed
+                    ? `${b.packageUsed}${b.tentWidth ? ` | ${b.tentWidth}×${b.tentLength}م` : ""}`
+                    : (b.bookingType || "");
+                  rows.push([
                     b.bookingId || "",
                     b.startDate || "",
                     b.bookingType || "",
+                    typeDetail,
                     formatCurrency(b.totalAmount || 0),
                     formatCurrency(b.paidAmount || 0),
                     formatCurrency(b.remainingAmount || 0),
                     b.status || "",
-                  ]),
+                  ]);
+                  // Item details (if any)
+                  const items = b.rentedItems || [];
+                  for (const item of items) {
+                    const itemTotal = (item.quantityRequested || 0) * (item.unitPrice || 0);
+                    rows.push([
+                      "",
+                      "",
+                      `📦 ${item.itemName}`,
+                      `×${item.quantityRequested} @ ${formatCurrency(item.unitPrice)}`,
+                      formatCurrency(itemTotal),
+                      "",
+                      "",
+                      "",
+                    ]);
+                  }
+                }
+                print("REPORT_TABLE", {
+                  title: `كشف حساب ${c.customerName}`,
+                  subtitle: `${c.customerPhone || ""}`,
+                  headers,
+                  rows,
                   footer: `الإجمالي: ${formatCurrency(c.totalAmount)} | المدفوع: ${formatCurrency(c.totalPaid)} | المتبقي: ${formatCurrency(c.totalRemaining)}`,
                 });
               }}>🖨️ طباعة كشف حساب</button>
