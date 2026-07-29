@@ -1863,19 +1863,25 @@ export default function SuppliersView() {
             if (!shareContentRef.current) return;
             const el = shareContentRef.current;
             el.style.display = "block";
-            el.style.position = "absolute";
-            el.style.left = "-9999px";
-            el.style.top = "0";
+            el.style.position = "fixed";
+            el.style.left = "50%";
+            el.style.top = "50%";
+            el.style.transform = "translate(-50%, -50%)";
+            el.style.opacity = "0";
+            el.style.zIndex = "-1";
+            el.style.pointerEvents = "none";
             el.style.width = "794px";
             el.style.background = "#fff";
             el.style.color = "#111";
             el.style.direction = "rtl";
             el.style.fontFamily = "sans-serif";
             el.style.padding = "1.5rem";
-            await new Promise(r => setTimeout(r, 300));
+            el.style.height = "auto";
+            await new Promise(r => setTimeout(r, 500));
 
             try {
-              const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+              const rect = el.getBoundingClientRect();
+              const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", width: rect.width, height: rect.height, y: 0, scrollY: 0, windowWidth: rect.width, windowHeight: rect.height });
               el.style.display = "none";
 
               if (format === "pdf") {
@@ -1902,6 +1908,20 @@ export default function SuppliersView() {
             } catch (err) {
               setErrorMsg("فشل إنشاء المستند: " + err.message);
               el.style.display = "none";
+              el.style.position = "";
+              el.style.left = "";
+              el.style.top = "";
+              el.style.transform = "";
+              el.style.opacity = "";
+              el.style.zIndex = "";
+              el.style.pointerEvents = "";
+              el.style.width = "";
+              el.style.background = "";
+              el.style.color = "";
+              el.style.direction = "";
+              el.style.fontFamily = "";
+              el.style.padding = "";
+              el.style.height = "";
             }
             setShareModal(null);
           };

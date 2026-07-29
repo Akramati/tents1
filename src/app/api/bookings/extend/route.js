@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { sheets } from "@/lib/google";
+import { sheets, calendar } from "@/lib/google";
 import { getSheetData, getFinanceLedger, addFinanceEntry, getIncomeAccountForBooking } from "@/lib/sheets";
 import { requireAuth } from "@/lib/auth";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 
 export async function POST(request) {
   try {
@@ -139,6 +140,35 @@ export async function POST(request) {
       } catch (finError) {
         console.error("Failed to record finance entry for extension:", finError);
       }
+    }
+
+    // Sync calendar event with new end date and extended description
+    try {
+      if (CALENDAR_ID) {
+        const evRes = await calendar.events.list({
+          calendarId: CALENDAR_ID,
+          privateExtendedProperty: `bookingId=${bookingId}`,
+          maxResults: 1,
+        });
+        const existingEvent = evRes.data.items?.[0];
+        if (existingEvent) {
+          const endDateTime = new Date(newEndDate);
+          endDateTime.setDate(endDateTime.getDate() + 1);
+          const updatedDesc = (existingEvent.description || "") + `\n[تم التمديد إلى ${newEndDate}]`;
+          await calendar.events.update({
+            calendarId: CALENDAR_ID,
+            eventId: existingEvent.id,
+            requestBody: {
+              summary: existingEvent.summary || "",
+              description: updatedDesc,
+              start: existingEvent.start,
+              end: { date: endDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
+            },
+          });
+        }
+      }
+    } catch (calError) {
+      console.error("Failed to sync calendar event on extend:", calError);
     }
 
     return NextResponse.json({

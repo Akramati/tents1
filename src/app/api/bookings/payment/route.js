@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { sheets } from "@/lib/google";
+import { sheets, calendar } from "@/lib/google";
 import { getSheetData, getFinanceLedger, addFinanceEntry, getIncomeAccountForBooking } from "@/lib/sheets";
 import { requireAuth } from "@/lib/auth";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 
 // PATCH /api/bookings/payment — record a payment
 export async function PATCH(request) {
@@ -97,6 +98,39 @@ export async function PATCH(request) {
       }
     } catch (finError) {
       console.error("Failed to record finance entry for payment:", finError);
+    }
+
+    // Sync calendar event with updated payment info
+    try {
+      if (CALENDAR_ID) {
+        const evRes = await calendar.events.list({
+          calendarId: CALENDAR_ID,
+          privateExtendedProperty: `bookingId=${bookingId}`,
+          maxResults: 1,
+        });
+        const existingEvent = evRes.data.items?.[0];
+        if (existingEvent) {
+          const newDescLines = (existingEvent.description || "").split("\n");
+          const updatedDesc = newDescLines.map((line) => {
+            if (line.startsWith("المبلغ المقدم:")) return `المبلغ المقدم: ${newPaid}`;
+            if (line.startsWith("المدفوع:")) return `المدفوع: ${newPaid}`;
+            if (line.startsWith("المتبقي:")) return `المتبقي: ${newRemaining}`;
+            return line;
+          }).join("\n");
+          await calendar.events.update({
+            calendarId: CALENDAR_ID,
+            eventId: existingEvent.id,
+            requestBody: {
+              summary: existingEvent.summary || "",
+              description: updatedDesc,
+              start: existingEvent.start,
+              end: existingEvent.end,
+            },
+          });
+        }
+      }
+    } catch (calError) {
+      console.error("Failed to sync calendar event on payment:", calError);
     }
 
     return NextResponse.json({

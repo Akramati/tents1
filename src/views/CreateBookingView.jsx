@@ -5,7 +5,7 @@ import { TENT_LENGTHS, TENT_WIDTHS } from "@/lib/utils";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
 
 export default function CreateBookingView() {
-  const { print, handlePrint, errorMsg, setErrorMsg, setLastBooking, bookingTypes, setView, getBehavior, formatCurrency, formatDateArabic, getTodayString, bookings, fetchBookings, fetchBookingTypes, editBooking, setEditBooking } = useApp();
+  const { print, handlePrint, errorMsg, setErrorMsg, setSuccessMsg, setLastBooking, bookingTypes, setView, getBehavior, formatCurrency, formatDateArabic, getTodayString, bookings, fetchBookings, fetchBookingTypes, editBooking, setEditBooking } = useApp();
 
   const [formData, setFormData] = useState({
     customerName: "",
@@ -26,8 +26,6 @@ export default function CreateBookingView() {
     tentCount: "1",
   });
   const [submitting, setSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState(null);
-
   const [invForRent, setInvForRent] = useState([]);
   const [rentedItems, setRentedItems] = useState([]);
 
@@ -555,6 +553,8 @@ export default function CreateBookingView() {
       });
       const data = await res.json();
       if (data.success) {
+        const msg = (isEdit ? "تم تحديث الحجز بنجاح" : "تم تسجيل الحجز بنجاح وإضافته إلى جدول البيانات!");
+        const warning = data.warning ? " ⚠️ " + data.warning : "";
         if (detailMode === "edit") {
           setDetailMode(null);
           setDetailBooking(null);
@@ -562,10 +562,10 @@ export default function CreateBookingView() {
           setVarianceData(null);
           setVarianceDecision(null);
           setView("query");
-          setSuccessMsg("✅ تم تحديث الحجز بنجاح");
+          setSuccessMsg("✅ " + msg + warning);
           return;
         }
-        setSuccessMsg(isEdit ? "تم تحديث الحجز بنجاح" : "تم تسجيل الحجز بنجاح وإضافته إلى جدول البيانات!");
+        setSuccessMsg("✅ " + msg + warning);
         setLastBooking(data.booking);
         setEditBookingId(null);
         setDetailMode(null);
@@ -660,7 +660,7 @@ export default function CreateBookingView() {
       setSuccessMsg(null);
 
       const isEdit = !!editBookingId;
-      const finalStatus = Number(formData.paidAmount || 0) > 0 ? formData.status : "قيد الانتظار";
+      const finalStatus = Number(formData.paidAmount || 0) > 0 ? "مؤكد" : "قيد الانتظار";
       if (isEdit && formData.status === "مؤكد" && finalStatus !== "مؤكد") {
         setErrorMsg("لا يمكن تغيير حجز مؤكد إلى قيد الانتظار. يمكنك إلغاء الحجز فقط.");
         setSubmitting(false);
@@ -745,6 +745,8 @@ export default function CreateBookingView() {
 
       const data = await res.json();
       if (data.success) {
+        const msg = (isEdit ? "تم تحديث الحجز بنجاح" : "تم تسجيل الحجز بنجاح وإضافته إلى جدول البيانات!");
+        const warning = data.warning ? " ⚠️ " + data.warning : "";
         if (detailMode === "edit") {
           setDetailMode(null);
           setDetailBooking(null);
@@ -752,10 +754,10 @@ export default function CreateBookingView() {
           setVarianceData(null);
           setVarianceDecision(null);
           setView("query");
-          setSuccessMsg("✅ تم تحديث الحجز بنجاح");
+          setSuccessMsg("✅ " + msg + warning);
           return;
         }
-        setSuccessMsg(isEdit ? "تم تحديث الحجز بنجاح" : "تم تسجيل الحجز بنجاح وإضافته إلى جدول البيانات!");
+        setSuccessMsg("✅ " + msg + warning);
         setLastBooking(data.booking);
         setEditBookingId(null);
         setDetailMode(null);

@@ -235,6 +235,68 @@ export default function QueryView() {
     setFinanceDetailLoading(false);
   };
 
+  const printCustomerStatement = async (booking) => {
+    if (!booking) return;
+    const name = (booking.customerName || "").trim();
+    const phone = (booking.customerPhone || "").trim();
+    if (!name) return;
+    try {
+      const r = await fetch(`/api/bookings?search=${encodeURIComponent(name)}&limit=100`);
+      const d = await r.json();
+      if (!d.success) return;
+      const allBks = (d.bookings || []).filter(b =>
+        b.customerName?.trim() === name &&
+        (b.customerPhone?.trim() === phone || !phone)
+      );
+      if (allBks.length === 0) return;
+      const headers = ["رقم الحجز", "التاريخ", "النوع", "التفاصيل", "الإجمالي", "المدفوع", "المتبقي", "الحالة"];
+      const rows = [];
+      for (const b of allBks) {
+        const typeDetail = b.packageUsed
+          ? `${b.packageUsed}${b.tentWidth ? ` | ${b.tentWidth}×${b.tentLength}م` : ""}`
+          : (b.bookingType || "");
+        rows.push([
+          b.bookingId || "",
+          b.startDate || "",
+          b.bookingType || "",
+          typeDetail,
+          formatCurrency(b.totalAmount || 0),
+          formatCurrency(b.paidAmount || 0),
+          formatCurrency(b.remainingAmount || 0),
+          b.status || "",
+        ]);
+        const isPackage = !!(b.packageUsed || b.tentWidth || b.tentLength);
+        if (!isPackage) {
+          const items = b.rentedItems || [];
+          for (const item of items) {
+            const itemTotal = (item.quantityRequested || 0) * (item.unitPrice || 0);
+            rows.push([
+              "",
+              "",
+              `📦 ${item.itemName}`,
+              `×${item.quantityRequested} @ ${formatCurrency(item.unitPrice)}`,
+              formatCurrency(itemTotal),
+              "",
+              "",
+              "",
+            ]);
+          }
+        }
+      }
+      const totalAmt = allBks.reduce((s, b) => s + (b.totalAmount || 0), 0);
+      const totalPaid = allBks.reduce((s, b) => s + (b.paidAmount || 0), 0);
+      const totalRem = allBks.reduce((s, b) => s + (b.remainingAmount || 0), 0);
+      print("REPORT_TABLE", {
+        title: `كشف حساب ${booking.customerName || ""}`,
+        subtitle: `${booking.customerPhone || ""}`,
+        dateHeader: new Date().toLocaleDateString("en-CA"),
+        headers,
+        rows,
+        footer: `الإجمالي: ${formatCurrency(totalAmt)} | المدفوع: ${formatCurrency(totalPaid)} | المتبقي: ${formatCurrency(totalRem)}`,
+      });
+    } catch {}
+  };
+
   const fetchCancelExpenses = async (bookingId) => {
     setCancelExpensesLoading(true);
     try {
@@ -449,6 +511,9 @@ export default function QueryView() {
 
                   {booking.notes && <div className="booking-notes">📝 {booking.notes}</div>}
                 </div>
+                <div className="booking-card-actions" style={{ padding: "0.35rem 0.75rem", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: "0.3rem", justifyContent: "flex-end" }}>
+                  <button className="link-btn" style={{ fontSize: "0.65rem", color: "#6366f1" }} onClick={(e) => { e.stopPropagation(); printCustomerStatement(booking); }}>🖨️ كشف الحساب</button>
+                </div>
               </div>
             ))}
           </div>
@@ -542,6 +607,9 @@ export default function QueryView() {
             <div className="modal-footer">
               <button className="btn wa-btn" onClick={() => openWhatsApp(detailModalBooking)}>
                 📞 واتساب
+              </button>
+              <button className="btn contract-btn" onClick={() => printCustomerStatement(detailModalBooking)}>
+                🖨️ كشف حساب العميل
               </button>
               <button className="btn contract-btn" onClick={() => openFinanceDetail(detailModalBooking)}>
                 📊 كشف الحساب
