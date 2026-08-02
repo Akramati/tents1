@@ -26,18 +26,54 @@ export async function POST(request) {
     }
 
     // Batch all sheet reads upfront
-    const [allAccounts, allBookingsRows, invRows, allFinance] = await Promise.all([
+    const [allAccounts, allBookingsRows, invRows, allFinance, rentRows] = await Promise.all([
       getChartOfAccounts(),
       getSheetData("Bookings", "A:O"),
       getSheetData("Inventory_Stock", "A2:D"),
       getFinanceLedger(),
+      getSheetData("Rented_Items", "A2:E"),
     ]);
+    let compRows = [];
+    try {
+      const compRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: "Item_Completions!A2:G",
+      });
+      compRows = compRes.data.values || [];
+    } catch (e) {
+      compRows = [];
+    }
     const accountNameMap = {};
     for (const a of allAccounts) accountNameMap[a.accountCode] = a.accountName;
     const getAcctName = (code) => accountNameMap[code] || code;
 
     const warnings = [];
     const today = new Date().toLocaleDateString("en-CA");
+
+    // --- 0. Validate all rented items are fully resolved (received + damaged = requested) ---
+    const compMap = {};
+    for (const r of compRows) {
+      if (r[1] !== bookingId) continue;
+      compMap[r[2]] = { receivedQty: parseInt(r[3] || 0), damagedQty: parseInt(r[4] || 0) };
+    }
+    const bookingRentRows = rentRows.filter((r) => r[1] === bookingId);
+    const unresolved = [];
+    for (const r of bookingRentRows) {
+      const itemId = r[2];
+      const requested = parseInt(r[3] || 0);
+      const received = compMap[itemId]?.receivedQty || 0;
+      const damaged = compMap[itemId]?.damagedQty || 0;
+      if (requested - received - damaged > 0) {
+        unresolved.push({ itemId, remaining: requested - received - damaged });
+      }
+    }
+    if (unresolved.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `لا يمكن إتمام الجرد: ${unresolved.length} صنف لم يُستلم بعد. أكمل استلام الأصناف أو سجل التوالف/المفقودات أولاً`,
+        unresolved,
+      }, { status: 400 });
+    }
 
     const bIdx = allBookingsRows.findIndex(r => r[0] === bookingId);
     const bookingType = bIdx !== -1 ? (allBookingsRows[bIdx][11] || "") : "";

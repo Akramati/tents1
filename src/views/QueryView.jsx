@@ -179,6 +179,13 @@ export default function QueryView() {
 
   const acctName = (code) => { const a = chartAccounts.find(a => a.accountCode === code); return a ? a.accountName : code; };
 
+  const expenseTypeLabel = (e) => {
+    const m = (e.notes || "").match(/^\[[^\]]*\]\s*(.*)$/);
+    const desc = m ? m[1].trim() : "";
+    if (desc) return desc;
+    return acctName(e.accountCode) || e.accountCode;
+  };
+
   const loadRentedItemsForBooking = async (bookingId) => {
     if (rentedItemsCache[bookingId]) return;
     setLoadingRentedItems(bookingId);
@@ -712,7 +719,7 @@ export default function QueryView() {
                                 {expenses.map(e => (
                                   <tr key={e.journalId}>
                                     <td>{e.date}</td>
-                                    <td>{acctName(e.accountCode) || e.accountCode}</td>
+                                    <td>{expenseTypeLabel(e)}</td>
                                     <td style={{color:"#ff4444"}}>{formatCurrency(e.amount)}</td>
                                     <td>{acctName(e.cashAccountCode) || e.cashAccountCode}</td>
                                   </tr>
@@ -742,7 +749,7 @@ export default function QueryView() {
                 const totalExpense = expenses.reduce((s, e) => s + e.amount, 0);
                 const rows = [];
                 for (const e of incomes) rows.push({ cells: [e.date, "ايراد", formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, (e.notes||"").replace(/🔗تحويلة:\d+/g,"")], type: "income" });
-                for (const e of expenses) rows.push({ cells: [e.date, `مصروف ${acctName(e.accountCode) || e.accountCode}`, formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, ""], type: "expense" });
+                for (const e of expenses) rows.push({ cells: [e.date, `مصروف ${expenseTypeLabel(e)}`, formatCurrency(e.amount), acctName(e.cashAccountCode) || e.cashAccountCode, ""], type: "expense" });
                 print("REPORT_TABLE", {
                   title: `كشف حساب ${financeDetailBooking.customerName}`,
                   dateHeader: new Date().toLocaleDateString("en-CA"),

@@ -21,6 +21,10 @@ const NEW_TABS = [
     headers: ["ID", "BookingID", "ItemID", "QuantityRequested", "UnitPrice"],
   },
   {
+    title: "Item_Completions",
+    headers: ["ID", "BookingID", "ItemID", "ReceivedQty", "DamagedQty", "Distribution", "UpdatedAt"],
+  },
+  {
     title: "Booking_Types",
     headers: ["TypeName", "Behavior", "Icon", "IsActive", "AccountCode", "TypeCode"],
   },

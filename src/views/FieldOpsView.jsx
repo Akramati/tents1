@@ -54,12 +54,16 @@ export default function FieldOpsView() {
   const [expenseCashAccount, setExpenseCashAccount] = useState("1101");
   const [completionModal, setCompletionModal] = useState(null);
   const [damageForm, setDamageForm] = useState({});
+  const [receivedForm, setReceivedForm] = useState({});
   const [distributionForm, setDistributionForm] = useState({});
   const [completing, setCompleting] = useState(false);
+  const [savingRemovalOnly, setSavingRemovalOnly] = useState(false);
   const [completionExpenses, setCompletionExpenses] = useState([]);
   const [completionSelectedAcct, setCompletionSelectedAcct] = useState("");
   const [completionSelectedAmt, setCompletionSelectedAmt] = useState("");
   const [completionSelectedDesc, setCompletionSelectedDesc] = useState("");
+  const [completionExpenseBreakdown, setCompletionExpenseBreakdown] = useState(null);
+  const [completionExpenseItems, setCompletionExpenseItems] = useState(null);
   const [transferModal, setTransferModal] = useState(null);
   const [transferType, setTransferType] = useState("installed");
   const [targetBookingId, setTargetBookingId] = useState("");
@@ -299,22 +303,53 @@ export default function FieldOpsView() {
     } catch { setErrorMsg("خطأ"); }
   };
 
-  const openCompletionModal = (booking) => {
+  const openCompletionModal = async (booking) => {
     setCompletionModal(booking);
     setTransportType("company");
     setSelectedCostCenter("");
     const initialDamages = {};
     const initialDist = {};
+    const initialReceived = {};
     for (const ri of booking.rentedItems || []) {
       initialDamages[ri.itemId] = 0;
       initialDist[ri.itemId] = { client: "", workers: "", driver: "", guard: "", system: "" };
+      initialReceived[ri.itemId] = 0;
     }
     setDamageForm(initialDamages);
     setDistributionForm(initialDist);
+    setReceivedForm(initialReceived);
     setCompletionExpenses([]);
     setCompletionSelectedAcct("");
     setCompletionSelectedAmt("");
     setCompletionSelectedDesc("");
+    setCompletionExpenseBreakdown(null);
+    setCompletionExpenseItems(null);
+    try {
+      const [expRes, compRes] = await Promise.all([
+        fetch(`/api/bookings/field/expense?bookingId=${encodeURIComponent(booking.bookingId)}`),
+        fetch(`/api/bookings/field/completion?bookingId=${encodeURIComponent(booking.bookingId)}`),
+      ]);
+      const d = await expRes.json();
+      if (d.success) {
+        setCompletionExpenseBreakdown(d.totals || {});
+        setCompletionExpenseItems(d.grouped || {});
+      }
+      const c = await compRes.json();
+      if (c.success && Array.isArray(c.items)) {
+        const savedReceived = {};
+        const savedDamages = {};
+        const savedDist = {};
+        for (const it of c.items) {
+          if (!(it.itemId in initialReceived)) continue;
+          savedReceived[it.itemId] = it.receivedQty || 0;
+          savedDamages[it.itemId] = it.damagedQty || 0;
+          savedDist[it.itemId] = { client: "", workers: "", driver: "", guard: "", system: "", ...(it.distribution || {}) };
+        }
+        setReceivedForm(savedReceived);
+        setDamageForm(savedDamages);
+        setDistributionForm((prev) => ({ ...prev, ...savedDist }));
+      }
+    } catch {}
   };
 
   const handleDistributionChange = (itemId, party, value) => {
@@ -324,21 +359,39 @@ export default function FieldOpsView() {
     }));
   };
 
+  const buildCompletionItems = () => {
+    return (completionModal?.rentedItems || []).map((item) => ({
+      itemId: item.itemId,
+      itemName: item.itemName || "",
+      quantityRequested: item.quantityRequested || 0,
+      receivedQty: parseInt(receivedForm[item.itemId] || 0),
+      damagedQty: parseInt(damageForm[item.itemId] || 0),
+      distribution: distributionForm[item.itemId] || {},
+    }));
+  };
+
+  const countRemainingItems = (items) => {
+    return items.filter((it) => (it.quantityRequested - it.receivedQty - it.damagedQty) > 0).length;
+  };
+
   const handleCompleteField = async () => {
     if (!completionModal) return;
+    const completionItems = buildCompletionItems();
+    const missing = countRemainingItems(completionItems);
+    if (missing > 0) {
+      setErrorMsg(`لا يمكن إتمام الجرد — يوجد ${missing} صنف لم يُستلم بعد (المتبقي في الميدان). أكمل استلامها أو سجلها توالف/مفقودات ثم أعد المحاولة`);
+      return;
+    }
     setCompleting(true);
     try {
-      const damagedItems = Object.entries(damageForm)
-        .filter(([_, qty]) => parseInt(qty) > 0)
-        .map(([itemId, damagedQuantity]) => {
-          const item = completionModal.rentedItems.find((r) => r.itemId === itemId);
-          return {
-            itemId,
-            itemName: item?.itemName || "",
-            damagedQuantity,
-            distribution: distributionForm[itemId] || {},
-          };
-        });
+      const damagedItems = completionItems
+        .filter((it) => it.damagedQty > 0)
+        .map((it) => ({
+          itemId: it.itemId,
+          itemName: it.itemName,
+          damagedQuantity: it.damagedQty,
+          distribution: it.distribution,
+        }));
 
       const actualRemoval = {};
       const customExpenseNotes = {};
@@ -350,9 +403,18 @@ export default function FieldOpsView() {
       }
 
       const tk = localStorage.getItem("token");
+      const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${tk}` };
+
+      const compRes = await fetch("/api/bookings/field/completion", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ bookingId: completionModal.bookingId, items: completionItems }),
+      });
+      await compRes.json();
+
       const res = await fetch("/api/bookings/complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+        headers: authHeaders,
         body: JSON.stringify({
           bookingId: completionModal.bookingId,
           damagedItems,
@@ -373,6 +435,53 @@ export default function FieldOpsView() {
       setErrorMsg("فشل الاتصال بالخادم");
     }
     setCompleting(false);
+  };
+
+  const handleSaveRemovalOnly = async () => {
+    if (!completionModal) return;
+    setSavingRemovalOnly(true);
+    const tk = localStorage.getItem("token");
+    const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${tk}` };
+    const completionItems = buildCompletionItems();
+    let msgParts = [];
+
+    try {
+      const compRes = await fetch("/api/bookings/field/completion", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ bookingId: completionModal.bookingId, items: completionItems }),
+      });
+      const compData = await compRes.json();
+      if (compData.success) msgParts.push("تم حفظ حالة استلام الأصناف");
+    } catch {}
+
+    const pending = completionExpenses || [];
+    if (pending.length > 0) {
+      const customCode = "5103-06";
+      let successCount = 0;
+      for (const e of pending) {
+        const accountCode = e.accountCode === "_custom" ? customCode : e.accountCode;
+        try {
+          const body = { bookingId: completionModal.bookingId, stage: "removal", accountCode, amount: e.amount, cashAccountCode: expenseCashAccount };
+          if (e.accountCode === "_custom" && e.desc) body.description = e.desc;
+          const res = await fetch("/api/bookings/field/expense", {
+            method: "POST", headers: authHeaders, body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (data.success) successCount++;
+        } catch {}
+      }
+      if (successCount > 0) msgParts.push(`تم حفظ ${successCount} مصروف فك`);
+    }
+    setSavingRemovalOnly(false);
+    const missing = countRemainingItems(completionItems);
+    if (msgParts.length > 0) {
+      setSuccessMsg(`${msgParts.join(" — ")}. ${missing > 0 ? `باقي ${missing} صنف غير مستلم، الحجز ما زال في الميدان` : "كل الأصناف مستلمة، الحجز ما زال في الميدان حتى الإتمام"}`);
+      setCompletionModal(null);
+      fetchFieldBookings();
+    } else {
+      setErrorMsg("لم يتم حفظ أي بيانات");
+    }
   };
 
   const openTransferModal = (booking) => {
@@ -835,73 +944,176 @@ export default function FieldOpsView() {
 
               {/* Damages with Distribution */}
               <div className="completion-section">
-                <h3 className="section-title damages">🔴 التوالف والمفقودات — توزيع المسؤولية</h3>
-                <p className="section-desc">حدد الكمية التالفة لكل صنف، ثم وزع قيمتها على الأطراف المسؤولة</p>
+                <h3 className="section-title damages">📦 استلام الأصناف — التوالف والمفقودات</h3>
+                <p className="section-desc">حدد عدد الأصناف المستلمة سليمة، والكمية التالفة/المفقودة لكل صنف، ثم وزع قيمة التوالف على الأطراف المسؤولة</p>
+                {(completionModal.rentedItems || []).length > 0 && (
+                  <button type="button" className="btn btn-sm btn-secondary" style={{ marginBottom: "0.4rem" }}
+                    onClick={() => {
+                      const allReceived = {};
+                      const resetDamages = {};
+                      for (const it of completionModal.rentedItems || []) {
+                        allReceived[it.itemId] = it.quantityRequested || 0;
+                        resetDamages[it.itemId] = 0;
+                      }
+                      setReceivedForm(allReceived);
+                      setDamageForm(resetDamages);
+                    }}>
+                    ✅ استلام جميع الأصناف سليمة
+                  </button>
+                )}
                 <table className="inv-table damages-table">
                   <thead>
                     <tr>
                       <th>الصنف</th>
-                      <th>المستأجر</th>
-                      <th>التالف</th>
+                      <th>المطلوب</th>
+                      <th>المستلم سليم</th>
+                      <th>التالف/مفقود</th>
                       {DISTRIBUTION_PARTIES.map((p) => (
                         <th key={p.key} style={{ color: p.color, fontSize: "0.7rem" }}>{p.label}</th>
                       ))}
-                      <th>الإجمالي</th>
+                      <th>المتبقي</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(completionModal.rentedItems || []).map((item) => (
-                      <tr key={item.id || item.itemId}>
-                        <td>{item.itemName}</td>
-                        <td>{item.quantityRequested}</td>
-                        <td>
-                          <input type="number" min="0" max={item.quantityRequested}
-                            value={damageForm[item.itemId] ?? 0}
-                            onChange={(e) => setDamageForm({ ...damageForm, [item.itemId]: e.target.value })}
-                            className="form-control damage-input" />
-                        </td>
-                        {DISTRIBUTION_PARTIES.map((p) => {
-                          const distVal = parseFloat(distributionForm[item.itemId]?.[p.key] || 0) || 0;
-                          const qty = parseInt(damageForm[item.itemId] || 0);
-                          return (
-                            <td key={p.key}>
-                              <input type="number" min="0" step="0.01"
-                                value={distributionForm[item.itemId]?.[p.key] || ""}
-                                onChange={(e) => handleDistributionChange(item.itemId, p.key, e.target.value)}
-                                className="form-control dist-input"
-                                disabled={!qty} placeholder="0" />
-                            </td>
-                          );
-                        })}
-                        <td style={{ fontWeight: "bold" }}>
-                          {Object.values(distributionForm[item.itemId] || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
+                    {(completionModal.rentedItems || []).map((item) => {
+                      const requested = item.quantityRequested || 0;
+                      const received = parseInt(receivedForm[item.itemId] || 0) || 0;
+                      const damaged = parseInt(damageForm[item.itemId] || 0) || 0;
+                      const remaining = requested - received - damaged;
+                      const resolved = remaining <= 0;
+                      return (
+                        <tr key={item.id || item.itemId} style={{ background: resolved ? "rgba(16,185,129,0.04)" : undefined }}>
+                          <td>{item.itemName}</td>
+                          <td>{requested}</td>
+                          <td>
+                            <input type="number" min="0" max={requested}
+                              value={receivedForm[item.itemId] ?? 0}
+                              onChange={(e) => {
+                                const val = Math.max(0, Math.min(requested, parseInt(e.target.value) || 0));
+                                setReceivedForm({ ...receivedForm, [item.itemId]: val });
+                              }}
+                              className="form-control damage-input" />
+                          </td>
+                          <td>
+                            <input type="number" min="0" max={requested}
+                              value={damageForm[item.itemId] ?? 0}
+                              onChange={(e) => {
+                                const val = Math.max(0, Math.min(requested - received, parseInt(e.target.value) || 0));
+                                setDamageForm({ ...damageForm, [item.itemId]: val });
+                              }}
+                              className="form-control damage-input" />
+                          </td>
+                          {DISTRIBUTION_PARTIES.map((p) => {
+                            const distVal = parseFloat(distributionForm[item.itemId]?.[p.key] || 0) || 0;
+                            const qty = parseInt(damageForm[item.itemId] || 0);
+                            return (
+                              <td key={p.key}>
+                                <input type="number" min="0" step="0.01"
+                                  value={distributionForm[item.itemId]?.[p.key] || ""}
+                                  onChange={(e) => handleDistributionChange(item.itemId, p.key, e.target.value)}
+                                  className="form-control dist-input"
+                                  disabled={!qty} placeholder="0" />
+                              </td>
+                            );
+                          })}
+                          <td style={{ fontWeight: "bold", color: resolved ? "#4caf50" : "#ff4444", whiteSpace: "nowrap" }}>
+                            {remaining > 0 ? `${remaining} غير مستلم` : "✓ مكتمل"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {(completionModal.rentedItems || []).length === 0 && (
-                      <tr><td colSpan="9" className="text-muted">لا توجد أصناف مسجلة</td></tr>
+                      <tr><td colSpan="10" className="text-muted">لا توجد أصناف مسجلة</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
 
               {/* Current expenses summary */}
-              {completionModal.expenseTotal > 0 && (
-                <div className="completion-section">
-                  <h3 className="section-title">📊 إجمالي مصاريف الحجز</h3>
-                  <div className="expense-summary-grid">
-                    <div className="expense-summary-card">
-                      <span className="label">إجمالي المصاريف المسجلة</span>
-                      <span className="value">{completionModal.expenseTotal.toLocaleString()} ر.ي</span>
+              {(() => {
+                const bd = completionExpenseBreakdown;
+                const prep = bd?.preparation || 0;
+                const inst = bd?.installation || 0;
+                const rem = bd?.removal || 0;
+                const dmg = bd?.damages || 0;
+                const pending = (completionExpenses || []).reduce((s, e) => s + e.amount, 0);
+                const grand = prep + inst + rem + dmg + pending;
+                const any = prep > 0 || inst > 0 || rem > 0 || dmg > 0 || pending > 0;
+                if (!any) return null;
+                const itemized = completionExpenseItems || {};
+                const renderItems = (list) => {
+                  if (!list || list.length === 0) return null;
+                  return (
+                    <ul style={{ margin: "0.35rem 0 0 0", padding: 0, listStyle: "none", fontSize: "0.72rem", opacity: 0.85 }}>
+                      {list.map((it) => {
+                        const m = (it.notes || "").match(/^\[[^\]]*\]\s*(.*)$/);
+                        const label = m && m[1].trim() ? m[1].trim() : (accountLookup[it.accountCode] || it.accountCode);
+                        return (
+                          <li key={it.journalId || `${it.accountCode}-${it.amount}-${it.date}`} style={{ display: "flex", justifyContent: "space-between", padding: "0.1rem 0", borderBottom: "1px dashed var(--border)" }}>
+                            <span>{label}</span>
+                            <span>{it.amount.toLocaleString()} ر.ي</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  );
+                };
+                return (
+                  <div className="completion-section">
+                    <h3 className="section-title">📊 إجمالي مصاريف الحجز</h3>
+                    <div className="expense-summary-grid">
+                      <div className="expense-summary-card">
+                        <span className="label">مصاريف التجهيز</span>
+                        <span className="value">{prep.toLocaleString()} ر.ي</span>
+                        {renderItems(itemized.preparation)}
+                      </div>
+                      <div className="expense-summary-card">
+                        <span className="label">مصاريف التركيب</span>
+                        <span className="value">{inst.toLocaleString()} ر.ي</span>
+                        {renderItems(itemized.installation)}
+                      </div>
+                      <div className="expense-summary-card">
+                        <span className="label">مصاريف الفك (المسجلة)</span>
+                        <span className="value">{rem.toLocaleString()} ر.ي</span>
+                        {renderItems(itemized.removal)}
+                      </div>
+                      {dmg > 0 && (
+                        <div className="expense-summary-card">
+                          <span className="label">التوالف</span>
+                          <span className="value">{dmg.toLocaleString()} ر.ي</span>
+                          {renderItems(itemized.damages)}
+                        </div>
+                      )}
+                      {pending > 0 && (
+                        <div className="expense-summary-card" style={{ borderColor: "#f59e0b" }}>
+                          <span className="label">مصاريف الفك (الجديدة)</span>
+                          <span className="value">{pending.toLocaleString()} ر.ي</span>
+                        </div>
+                      )}
+                      <div className="expense-summary-card" style={{ borderColor: "var(--gold)", background: "rgba(255,215,0,0.08)" }}>
+                        <span className="label" style={{ fontWeight: "bold" }}>الإجمالي الكلي</span>
+                        <span className="value" style={{ fontWeight: "bold" }}>{grand.toLocaleString()} ر.ي</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ flex: "1 1 100%", fontSize: "0.75rem", opacity: 0.8, textAlign: "center" }}>
+                {(() => {
+                  const missing = countRemainingItems(buildCompletionItems());
+                  if (missing > 0) return `⚠️ باقي ${missing} صنف غير مستلم — الحجز لن يُغلق حتى اكتمال الاستلام أو تسجيل التوالف/المفقودات`;
+                  if ((completionModal.rentedItems || []).length > 0) return "✅ كل الأصناف مستلمة — يمكن إتمام الجرد الآن";
+                  return "لا توجد أصناف مسجلة لهذا الحجز";
+                })()}
+              </div>
               <button className="btn btn-secondary" onClick={() => setCompletionModal(null)}>إلغاء</button>
+              <button className="btn btn-gold" onClick={handleSaveRemovalOnly} disabled={savingRemovalOnly}>
+                {savingRemovalOnly ? "جاري الحفظ..." : "💾 حفظ بدون إتمام الجرد"}
+              </button>
               <button className="btn btn-primary" onClick={handleCompleteField} disabled={completing}>
-                {completing ? "جاري الحفظ..." : "✅ حفظ وإغلاق"}
+                {completing ? "جاري الحفظ..." : "✅ حفظ مع إتمام الجرد"}
               </button>
             </div>
           </div>

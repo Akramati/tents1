@@ -19,6 +19,36 @@ function getInstallationDate(customFields) {
   return val || null;
 }
 
+function computeCompletionSummary(items, completions) {
+  const compMap = {};
+  for (const c of completions) compMap[c.itemId] = c;
+  let receivedTotal = 0;
+  let damagedTotal = 0;
+  let requestedTotal = 0;
+  let remainingTotal = 0;
+  let missingItems = 0;
+  for (const item of items) {
+    const qty = item.quantityRequested || 0;
+    const received = compMap[item.itemId]?.receivedQty || 0;
+    const damaged = compMap[item.itemId]?.damagedQty || 0;
+    const remaining = qty - received - damaged;
+    requestedTotal += qty;
+    receivedTotal += received;
+    damagedTotal += damaged;
+    remainingTotal += remaining;
+    if (remaining > 0) missingItems++;
+  }
+  const fullyResolved = missingItems === 0;
+  return {
+    requestedTotal,
+    receivedTotal,
+    damagedTotal,
+    remainingTotal,
+    missingItems,
+    fullyResolved,
+  };
+}
+
 function calcAutoFieldStatus(booking) {
   const currentStatus = booking.fieldStatus || "pending";
 
@@ -124,6 +154,26 @@ export async function GET() {
       expenseTotals[bid] += e.amount;
     }
 
+    // Pre-compute per-item completion state per booking
+    let completionRows = [];
+    try {
+      const compRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: "Item_Completions!A2:G",
+      });
+      completionRows = compRes.data.values || [];
+    } catch {}
+    const completionMap = {};
+    for (const r of completionRows) {
+      const bid = r[1];
+      if (!completionMap[bid]) completionMap[bid] = [];
+      completionMap[bid].push({
+        itemId: r[2],
+        receivedQty: parseInt(r[3] || 0),
+        damagedQty: parseInt(r[4] || 0),
+      });
+    }
+
     const bookings = bookingsRaw.map((row) => {
       const bookingId = row[0];
       const customFieldsStr = row[27] || "";
@@ -173,6 +223,7 @@ export async function GET() {
         customerAddress: row[30] || "",
         rentedItems: displayItems,
         expenseTotal: expenseTotals[bookingId] || 0,
+        completion: computeCompletionSummary(displayItems, completionMap[bookingId] || []),
       };
 
       // Auto-calculate field status based on dates

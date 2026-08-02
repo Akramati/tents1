@@ -186,6 +186,16 @@ export default function FieldCard({ booking, onMove, onComplete, onExpense, onTr
         <span className={`card-type type-${(booking.bookingType || "عادية").replace(/\s/g, "")}`}>
           {booking.bookingType || "عادية"}
         </span>
+        {booking.completion && booking.completion.missingItems > 0 && (
+          <span className="pkg-item-tag" style={{fontSize:"0.6rem",background:"rgba(220,38,38,0.18)",color:"#dc2626",marginRight:"0.3rem",whiteSpace:"nowrap"}}>
+            ⏳ باقي {booking.completion.missingItems} صنف
+          </span>
+        )}
+        {booking.completion && booking.completion.missingItems === 0 && (booking.completion.requestedTotal > 0) && (
+          <span className="pkg-item-tag" style={{fontSize:"0.6rem",background:"rgba(76,175,80,0.18)",color:"#4caf50",marginRight:"0.3rem",whiteSpace:"nowrap"}}>
+            ✓ مستلم
+          </span>
+        )}
       </div>
 
       <div className="field-card-body">
