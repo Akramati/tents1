@@ -108,7 +108,17 @@ export async function PATCH(request) {
           privateExtendedProperty: `bookingId=${bookingId}`,
           maxResults: 1,
         });
-        const existingEvent = evRes.data.items?.[0];
+        let existingEvent = evRes.data.items?.[0];
+        if (!existingEvent) {
+          const fallback = await calendar.events.list({
+            calendarId: CALENDAR_ID,
+            q: bookingId,
+            maxResults: 10,
+          });
+          existingEvent = (fallback.data.items || []).find((ev) =>
+            ev.description && ev.description.includes(bookingId)
+          );
+        }
         if (existingEvent) {
           const newDescLines = (existingEvent.description || "").split("\n");
           const updatedDesc = newDescLines.map((line) => {
@@ -125,6 +135,7 @@ export async function PATCH(request) {
               description: updatedDesc,
               start: existingEvent.start,
               end: existingEvent.end,
+              extendedProperties: existingEvent.extendedProperties,
             },
           });
         }

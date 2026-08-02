@@ -150,7 +150,17 @@ export async function POST(request) {
           privateExtendedProperty: `bookingId=${bookingId}`,
           maxResults: 1,
         });
-        const existingEvent = evRes.data.items?.[0];
+        let existingEvent = evRes.data.items?.[0];
+        if (!existingEvent) {
+          const fallback = await calendar.events.list({
+            calendarId: CALENDAR_ID,
+            q: bookingId,
+            maxResults: 10,
+          });
+          existingEvent = (fallback.data.items || []).find((ev) =>
+            ev.description && ev.description.includes(bookingId)
+          );
+        }
         if (existingEvent) {
           const endDateTime = new Date(newEndDate);
           endDateTime.setDate(endDateTime.getDate() + 1);
@@ -163,6 +173,7 @@ export async function POST(request) {
               description: updatedDesc,
               start: existingEvent.start,
               end: { date: endDateTime.toISOString().split("T")[0], timeZone: "Asia/Riyadh" },
+              extendedProperties: existingEvent.extendedProperties,
             },
           });
         }
