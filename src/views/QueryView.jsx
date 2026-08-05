@@ -519,6 +519,9 @@ export default function QueryView() {
                   {booking.notes && <div className="booking-notes">📝 {booking.notes}</div>}
                 </div>
                 <div className="booking-card-actions" style={{ padding: "0.35rem 0.75rem", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: "0.3rem", justifyContent: "flex-end" }}>
+                  {booking.remainingAmount > 0 && booking.status !== "ملغي" && booking.status !== "مكتمل" && (
+                    <button className="link-btn" style={{ fontSize: "0.65rem", color: "#059669" }} onClick={(e) => { e.stopPropagation(); openPayModal(booking); }}>💰 دفعة</button>
+                  )}
                   <button className="link-btn" style={{ fontSize: "0.65rem", color: "#6366f1" }} onClick={(e) => { e.stopPropagation(); printCustomerStatement(booking); }}>🖨️ كشف الحساب</button>
                 </div>
               </div>
