@@ -6,7 +6,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
 
 export default function QueryView() {
-  const { handlePrint, setErrorMsg, setSuccessMsg, bookingTypes, setView, setEditBooking, setPaymentRedirect, print, getTodayString, userRole } = useApp();
+  const { handlePrint, setErrorMsg, setSuccessMsg, bookingTypes, setView, setEditBooking, setPaymentRedirect, print, getTodayString, userRole, setNewBookingDate } = useApp();
 
   const [selectedDate, setSelectedDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -580,7 +580,10 @@ export default function QueryView() {
             <div className="mini-calendar-day-summary glass" style={{ marginBottom: "1rem", padding: "0.6rem 0.85rem", borderRadius: "10px", fontSize: "0.85rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.4rem" }}>
                 <strong>📌 {fmtCalendarArabic(selectedDate)} — {dayEvs.length} حجز</strong>
-                <button className="btn btn-sm btn-secondary" onClick={() => setSelectedDate("")}>✕ إلغاء التصفية</button>
+                <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+                  <button className="btn btn-sm btn-primary" onClick={() => { setNewBookingDate(selectedDate); setSelectedDate(""); setView("create"); }}>➕ إنشاء حجز</button>
+                  <button className="btn btn-sm btn-secondary" onClick={() => setSelectedDate("")}>✕ إلغاء التصفية</button>
+                </div>
               </div>
               {dayEvs.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.5rem" }}>

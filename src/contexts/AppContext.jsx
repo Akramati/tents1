@@ -18,6 +18,7 @@ export function AppProvider({ children }) {
   const [bookingTypes, setBookingTypes] = useState([]);
   const [editBooking, setEditBooking] = useState(null);
   const [paymentRedirect, setPaymentRedirect] = useState(null);
+  const [newBookingDate, setNewBookingDate] = useState("");
 
   const userRole = user?.role || "employee";
   const setUserRole = () => {}; // no-op — role comes from AuthContext
@@ -69,6 +70,7 @@ export function AppProvider({ children }) {
     formatCurrency, formatDateArabic, getTodayString, getBehavior,
     editBooking, setEditBooking,
     paymentRedirect, setPaymentRedirect,
+    newBookingDate, setNewBookingDate,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

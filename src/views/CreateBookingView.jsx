@@ -5,7 +5,7 @@ import { TENT_LENGTHS, TENT_WIDTHS } from "@/lib/utils";
 import DualCalendarPicker from "@/components/DualCalendarPicker";
 
 export default function CreateBookingView() {
-  const { print, handlePrint, errorMsg, setErrorMsg, setSuccessMsg, setLastBooking, bookingTypes, setView, getBehavior, formatCurrency, formatDateArabic, getTodayString, bookings, fetchBookings, fetchBookingTypes, editBooking, setEditBooking } = useApp();
+  const { print, handlePrint, errorMsg, setErrorMsg, setSuccessMsg, setLastBooking, bookingTypes, setView, getBehavior, formatCurrency, formatDateArabic, getTodayString, bookings, fetchBookings, fetchBookingTypes, editBooking, setEditBooking, newBookingDate, setNewBookingDate } = useApp();
 
   const [formData, setFormData] = useState({
     customerName: "",
@@ -1021,7 +1021,12 @@ export default function CreateBookingView() {
   }, []);
 
   useEffect(() => {
-    if (editBooking) { startEditBooking(editBooking); setEditBooking(null); } }, [editBooking]);
+    if (editBooking) { startEditBooking(editBooking); setEditBooking(null); }
+    else if (newBookingDate) {
+      setFormData(prev => ({ ...prev, startDate: newBookingDate, endDate: newBookingDate }));
+      setNewBookingDate("");
+    }
+  }, [editBooking, newBookingDate]);
 
   // Auto-select cost center when booking type or branch changes
   useEffect(() => {
