@@ -56,7 +56,6 @@ export default function QueryView() {
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
   const [allCalendarBookings, setAllCalendarBookings] = useState([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
-  const [calendarEventCache, setCalendarEventCache] = useState(null);
 
   const authHeaders = () => {
     const tk = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -140,10 +139,8 @@ export default function QueryView() {
       .finally(() => setCalendarLoading(false));
   }, []);
 
-  // Cache calendar events by (year,month) — events fall on any day within the range
+  // Build map of bookings per day for the visible month
   const calendarEventsForMonth = useMemo(() => {
-    const key = `${calYear}-${calMonth}`;
-    if (calendarEventCache && calendarEventCache.key === key) return calendarEventCache;
     const map = {};
     for (const b of allCalendarBookings) {
       if (b.status === "ملغي") continue;
@@ -159,10 +156,16 @@ export default function QueryView() {
         }
       }
     }
-    const result = { key, map };
-    setCalendarEventCache(result);
-    return result;
-  }, [calYear, calMonth, allCalendarBookings, calendarEventCache]);
+    return map;
+  }, [calYear, calMonth, allCalendarBookings]);
+
+  // Dot color by booking type: happy-net purple, tents/packages & individual red, else payment status
+  const calDotColor = (b) => {
+    const t = (b.bookingType || "").trim();
+    if (t.includes("هابي نت")) return "#a855f7";
+    if (t.includes("خيام وباقات") || t.includes("مفردات")) return "#ef4444";
+    return b.remainingAmount > 0 ? "#f59e0b" : "#4caf50";
+  };
 
   const fetchBookings = async (page) => {
     try {
@@ -423,14 +426,12 @@ export default function QueryView() {
     if (m > 11) { m = 0; y++; }
     setCalYear(y);
     setCalMonth(m);
-    setCalendarEventCache(null);
   };
 
   const goCalToToday = () => {
     const today = new Date();
     setCalYear(today.getFullYear());
     setCalMonth(today.getMonth());
-    setCalendarEventCache(null);
   };
 
   const fmtCalKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -541,7 +542,7 @@ export default function QueryView() {
                   {week.map((day, di) => {
                     if (!day) return <div key={di} />;
                     const ds = fmtCalKey(calYear, calMonth, day);
-                    const dayEvents = calendarEventsForMonth.map[ds] || [];
+                    const dayEvents = calendarEventsForMonth[ds] || [];
                     const todayStr2 = new Date().toLocaleDateString("en-CA");
                     const isToday = ds === todayStr2;
                     const isSelected = ds === selectedDate;
@@ -559,7 +560,7 @@ export default function QueryView() {
                         {dayEvents.length > 0 && (
                           <div style={{ marginTop: "0.25rem", display: "flex", justifyContent: "center", gap: "0.15rem", flexWrap: "wrap" }}>
                             {dayEvents.slice(0, 3).map((e, i) => (
-                              <span key={i} title={`${e.customerName} — ${e.bookingType || ""}`} style={{ width: "8px", height: "8px", borderRadius: "50%", display: "inline-block", background: e.remainingAmount > 0 ? "#f59e0b" : "#4caf50" }} />
+                              <span key={i} title={`${e.customerName} — ${e.bookingType || ""}`} style={{ width: "8px", height: "8px", borderRadius: "50%", display: "inline-block", background: calDotColor(e) }} />
                             ))}
                             {dayEvents.length > 3 && <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>+{dayEvents.length - 3}</span>}
                           </div>
@@ -574,7 +575,7 @@ export default function QueryView() {
         </div>
         {/* Mini calendar selected-day summary */}
         {selectedDate && (() => {
-          const dayEvs = calendarEventsForMonth.map[selectedDate] || [];
+          const dayEvs = calendarEventsForMonth[selectedDate] || [];
           return (
             <div className="mini-calendar-day-summary glass" style={{ marginBottom: "1rem", padding: "0.6rem 0.85rem", borderRadius: "10px", fontSize: "0.85rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.4rem" }}>
