@@ -51,6 +51,13 @@ export default function QueryView() {
   const [ledgerFilterCache, setLedgerFilterCache] = useState([]);
   const [calNotif, setCalNotif] = useState(null);
 
+  // Mini month calendar state
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [allCalendarBookings, setAllCalendarBookings] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarEventCache, setCalendarEventCache] = useState(null);
+
   const authHeaders = () => {
     const tk = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const h = { "Content-Type": "application/json" };
@@ -122,6 +129,40 @@ export default function QueryView() {
       .then((data) => { if (data.success) setLedgerFilterCache(data.entries || []); })
       .catch(() => {});
   }, []);
+
+  // Load all bookings once for the mini month calendar
+  useEffect(() => {
+    setCalendarLoading(true);
+    fetch("/api/bookings?limit=10000")
+      .then(r => r.json())
+      .then(d => { if (d.success) setAllCalendarBookings(d.bookings || []); })
+      .catch(() => {})
+      .finally(() => setCalendarLoading(false));
+  }, []);
+
+  // Cache calendar events by (year,month) — events fall on any day within the range
+  const calendarEventsForMonth = useMemo(() => {
+    const key = `${calYear}-${calMonth}`;
+    if (calendarEventCache && calendarEventCache.key === key) return calendarEventCache;
+    const map = {};
+    for (const b of allCalendarBookings) {
+      if (b.status === "ملغي") continue;
+      const start = b.startDate ? new Date(b.startDate + "T00:00:00") : null;
+      const end = b.endDate ? new Date(b.endDate + "T00:00:00") : null;
+      if (!start || isNaN(start.getTime())) continue;
+      const rangeEnd = end && !isNaN(end.getTime()) ? end : start;
+      for (let d = new Date(start); d <= rangeEnd; d.setDate(d.getDate() + 1)) {
+        if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
+          const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          if (!map[ds]) map[ds] = [];
+          map[ds].push(b);
+        }
+      }
+    }
+    const result = { key, map };
+    setCalendarEventCache(result);
+    return result;
+  }, [calYear, calMonth, allCalendarBookings, calendarEventCache]);
 
   const fetchBookings = async (page) => {
     try {
@@ -372,6 +413,47 @@ export default function QueryView() {
 
   const totalBookingsCount = pagination?.totalCount || bookings.length;
 
+  const CAL_MONTH_NAMES = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+  const CAL_DAY_NAMES = ["س", "ح", "ن", "ث", "ر", "خ", "ج"];
+
+  const changeCalMonth = (delta) => {
+    let y = calYear;
+    let m = calMonth + delta;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    setCalYear(y);
+    setCalMonth(m);
+    setCalendarEventCache(null);
+  };
+
+  const goCalToToday = () => {
+    const today = new Date();
+    setCalYear(today.getFullYear());
+    setCalMonth(today.getMonth());
+    setCalendarEventCache(null);
+  };
+
+  const fmtCalKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const fmtCalendarArabic = (ds) => {
+    try { return new Date(ds + "T00:00:00").toLocaleDateString("ar-SA", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); }
+    catch { return ds; }
+  };
+
+  // Build the mini month grid (Saturday-first, matching the app's calendar convention)
+  const buildCalWeeks = useMemo(() => {
+    const firstDayWeekday = new Date(calYear, calMonth, 1).getDay();
+    const offset = (firstDayWeekday + 1) % 7; // Saturday-first
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const weeks = [];
+    let row = new Array(offset).fill(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      row.push(d);
+      if (row.length === 7) { weeks.push(row); row = []; }
+    }
+    if (row.length > 0) { while (row.length < 7) row.push(null); weeks.push(row); }
+    return weeks;
+  }, [calYear, calMonth]);
+
   const resolveCustomFieldValue = (booking, field) => {
     if (field.type === "عدد صحيح" || field.type === "number") {
       return booking.customFields?.[field.name] || booking[field.name] || "";
@@ -436,6 +518,82 @@ export default function QueryView() {
             </button>
           </div>
         </div>
+
+        {/* ─── Mini Month Calendar ─────────────────────────────────── */}
+        <div className="mini-calendar glass" style={{ marginBottom: "1rem", borderRadius: "12px", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", padding: "0.6rem 0.85rem", background: "rgba(255,255,255,0.04)" }}>
+            <strong style={{ fontSize: "0.95rem" }}>📅 {CAL_MONTH_NAMES[calMonth]} {calYear}</strong>
+            <div style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
+              <button className="btn btn-sm" onClick={changeCalMonth.bind(null, -1)} title="الشهر السابق">◀</button>
+              <button className="btn btn-sm" onClick={goCalToToday} style={{ fontWeight: "bold" }}>اليوم</button>
+              <button className="btn btn-sm" onClick={changeCalMonth.bind(null, 1)} title="الشهر التالي">▶</button>
+            </div>
+          </div>
+          {calendarLoading ? (
+            <div style={{ textAlign: "center", padding: "1rem", opacity: 0.5, fontSize: "0.85rem" }}>جاري تحميل التقويم...</div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", textAlign: "center", fontSize: "0.72rem", padding: "0.35rem 0", background: "rgba(255,255,255,0.02)", fontWeight: "bold" }}>
+                {CAL_DAY_NAMES.map(dn => <div key={dn}>{dn}</div>)}
+              </div>
+              {buildCalWeeks.map((week, wi) => (
+                <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)" }}>
+                  {week.map((day, di) => {
+                    if (!day) return <div key={di} />;
+                    const ds = fmtCalKey(calYear, calMonth, day);
+                    const dayEvents = calendarEventsForMonth.map[ds] || [];
+                    const todayStr2 = new Date().toLocaleDateString("en-CA");
+                    const isToday = ds === todayStr2;
+                    const isSelected = ds === selectedDate;
+                    const hasEvents = dayEvents.length > 0;
+                    return (
+                      <button key={di}
+                        onClick={() => { setSelectedDate(isSelected ? "" : ds); setCurrentPage(1); setSearchTerm(""); }}
+                        style={{
+                          minHeight: "52px", padding: "0.3rem 0.2rem", cursor: "pointer", border: "none",
+                          background: isSelected ? "var(--accent)" : isToday ? "rgba(251,191,36,0.18)" : "transparent",
+                          color: isSelected ? "#fff" : "inherit", borderRadius: "0", borderLeft: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)",
+                          fontFamily: "inherit", textAlign: "center", position: "relative",
+                        }}>
+                        <span style={{ fontSize: "0.82rem", fontWeight: isToday || isSelected ? 800 : 400 }}>{day}</span>
+                        {dayEvents.length > 0 && (
+                          <div style={{ marginTop: "0.25rem", display: "flex", justifyContent: "center", gap: "0.15rem", flexWrap: "wrap" }}>
+                            {dayEvents.slice(0, 3).map((e, i) => (
+                              <span key={i} title={`${e.customerName} — ${e.bookingType || ""}`} style={{ width: "8px", height: "8px", borderRadius: "50%", display: "inline-block", background: e.remainingAmount > 0 ? "#f59e0b" : "#4caf50" }} />
+                            ))}
+                            {dayEvents.length > 3 && <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>+{dayEvents.length - 3}</span>}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+        {/* Mini calendar selected-day summary */}
+        {selectedDate && (() => {
+          const dayEvs = calendarEventsForMonth.map[selectedDate] || [];
+          return (
+            <div className="mini-calendar-day-summary glass" style={{ marginBottom: "1rem", padding: "0.6rem 0.85rem", borderRadius: "10px", fontSize: "0.85rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.4rem" }}>
+                <strong>📌 {fmtCalendarArabic(selectedDate)} — {dayEvs.length} حجز</strong>
+                <button className="btn btn-sm btn-secondary" onClick={() => setSelectedDate("")}>✕ إلغاء التصفية</button>
+              </div>
+              {dayEvs.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.5rem" }}>
+                  {dayEvs.map(e => (
+                    <div key={e.bookingId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", padding: "0.25rem 0.5rem", background: "rgba(255,255,255,0.04)", borderRadius: "6px" }}>
+                      <span><strong>{e.customerName}</strong> <span style={{ opacity: 0.6 }}>({e.bookingType || "-"})</span></span>
+                      <span style={{ color: e.remainingAmount > 0 ? "#f59e0b" : "#4caf50", fontWeight: 700 }}>{e.remainingAmount > 0 ? `متبقي ${formatCurrency(e.remainingAmount)}` : "مسدد ✅"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="section-title-row">
           <h2>نتائج الاستعلام ({costCenterFilter || branchFilter ? filteredBookings.length : totalBookingsCount})</h2>
