@@ -178,11 +178,18 @@ export default function CreateBookingView() {
       const fields = ["name", "tel"];
       const contacts = await navigator.contacts.select(fields, { multiple: true });
       const normalized = (contacts || [])
-        .filter(c => (c.name && c.name.trim()) || (c.tel && c.tel.length))
-        .map(c => ({
-          name: (c.name || []).join(" ").trim() || (c.name || "").toString().trim(),
-          phone: (c.tel && c.tel.length) ? c.tel[0].replace(/[^0-9+]/g, "") : "",
-        }));
+        .map(c => {
+          // Safely convert name (string or array of strings) to a clean string
+          let safeName = "";
+          if (c.name) {
+            if (Array.isArray(c.name)) safeName = c.name.join(" ").trim();
+            else safeName = c.name.toString().trim();
+          }
+          const safePhone = (c.tel && c.tel.length) ? c.tel[0].replace(/[^0-9+]/g, "") : "";
+          return { name: safeName, phone: safePhone };
+        })
+        .filter(c => c.name || c.phone);
+
       if (normalized.length === 1) {
         applyContact(normalized[0]);
       } else if (normalized.length > 1) {
