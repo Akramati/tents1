@@ -75,6 +75,9 @@ export default function CreateBookingView() {
   const [phoneLookupResults, setPhoneLookupResults] = useState([]);
   const [showPhoneLookup, setShowPhoneLookup] = useState(false);
   const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
+  const [contactPicking, setContactPicking] = useState(false);
+  const [contactsError, setContactsError] = useState("");
+  const [contactSelectMode, setContactSelectMode] = useState("phone");
   const [guarantorIdPhoto, setGuarantorIdPhoto] = useState("");
 
   const [editBookingId, setEditBookingId] = useState(null);
@@ -143,6 +146,104 @@ export default function CreateBookingView() {
     setCustomerAddress(b.customerAddress || "");
     setShowPhoneLookup(false);
     setPhoneLookupResults([]);
+  };
+
+  // ── Phone contacts integration ────────────────────────────────
+  const [savedContacts, setSavedContacts] = useState([]);
+  const [contactPickResults, setContactPickResults] = useState([]);
+  const [showContactPick, setShowContactPick] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("savedContacts");
+      if (raw) setSavedContacts(JSON.parse(raw) || []);
+    } catch {}
+  }, []);
+
+  const persistSavedContacts = (list) => {
+    setSavedContacts(list);
+    try { localStorage.setItem("savedContacts", JSON.stringify(list)); } catch {}
+  };
+
+  // Open the native phone contacts picker (Contact Picker API)
+  const openContactPicker = async () => {
+    setContactsError("");
+    setContactPicking(true);
+    try {
+      if (typeof navigator === "undefined" || !navigator.contacts || !navigator.contacts.select) {
+        setContactsError("جهازك أو متصفحك لا يدعم قراءة جهات الاتصال مباشرة. جرّب فتح التطبيق في متصفح كروم على أندرويد أو سفاري على آيفون.");
+        return;
+      }
+      const props = navigator.contacts.properties;
+      const canName = props.includes("name");
+      const canTel = props.includes("tel");
+      if (!canName && !canTel) {
+        setContactsError("المتصفح لا يسمح بقراءة الاسم أو رقم الجوال من جهات الاتصال.");
+        return;
+      }
+      const fields = [];
+      if (canName) fields.push("name");
+      if (canTel) fields.push("tel");
+      const contacts = await navigator.contacts.select(fields, { multiple: true });
+      const normalized = (contacts || [])
+        .filter(c => (c.name && c.name.trim()) || (c.tel && c.tel.length))
+        .map(c => ({
+          name: (c.name || "").trim(),
+          phone: (c.tel && c.tel.length) ? c.tel[0].replace(/[^0-9+]/g, "") : "",
+        }));
+      if (normalized.length === 1) {
+        applyContact(normalized[0]);
+      } else if (normalized.length > 1) {
+        setContactPickResults(normalized);
+        setShowContactPick(true);
+      }
+      // Keep a cache for name auto-fill next time
+      if (normalized.length) {
+        const merged = [...savedContacts];
+        for (const c of normalized) {
+          const k = `${c.name}|${c.phone}`;
+          if (!merged.some(m => `${m.name}|${m.phone}` === k)) merged.push(c);
+        }
+        persistSavedContacts(merged);
+      }
+    } catch (err) {
+      if (err && (err.name === "NotAllowedError" || err.code === 1)) {
+        setContactsError("تم رفض إذن الوصول لجهات الاتصال. فعّل الإذن من إعدادات المتصفح ثم أعد المحاولة.");
+      } else {
+        setContactsError("تعذّر فتح جهات الاتصال. تأكد من إذن الوصول ثم أعد المحاولة.");
+      }
+    }
+    setContactPicking(false);
+  };
+
+  const applyContact = (c) => {
+    const name = c.name || "";
+    const phone = c.phone || "";
+    if (contactSelectMode === "name") {
+      setFormData(prev => ({ ...prev, customerName: name, customerPhone: phone || prev.customerPhone }));
+    } else {
+      setFormData(prev => ({ ...prev, customerName: prev.customerName || name, customerPhone: phone }));
+    }
+    setShowContactPick(false);
+    setContactPickResults([]);
+  };
+
+  // Auto-fill phone when the typed name matches a saved/known contact
+  const handleNameInput = (e) => {
+    const value = e.target.value;
+    setFormData(prev => ({ ...prev, customerName: value }));
+    if (!value.trim()) return;
+    const typed = value.trim().toLowerCase();
+    const exact = savedContacts.find(c => c.name && c.name.trim().toLowerCase() === typed);
+    const partial = exact || savedContacts.find(c => c.name && c.name.trim().toLowerCase().includes(typed));
+    if (partial && partial.phone) {
+      setFormData(prev => {
+        const curPhone = (prev.customerPhone || "").replace(/[^0-9+]/g, "");
+        const contactPhone = (partial.phone || "").replace(/[^0-9+]/g, "");
+        if (curPhone && curPhone !== contactPhone) return prev;
+        return { ...prev, customerPhone: contactPhone };
+      });
+    }
   };
 
   const fetchTypeFields = async (typeName) => {
@@ -970,17 +1071,46 @@ export default function CreateBookingView() {
           {/* 2. Customer — second row */}
           <div className="form-group">
             <label htmlFor="customerName">اسم العميل بالكامل <span className="required">*</span></label>
-            <input type="text" id="customerName" name="customerName" value={formData.customerName} onChange={handleInputChange} placeholder="مثال: محمد بن عبد العزيز" required className="form-control" />
+            <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+              <input type="text" id="customerName" name="customerName" value={formData.customerName} onChange={handleNameInput} placeholder="مثال: محمد بن عبد العزيز" required className="form-control" style={{ flex: 1 }} autoComplete="off" />
+              <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.35rem 0.5rem", whiteSpace: "nowrap" }}
+                onClick={() => { setContactSelectMode("name"); openContactPicker(); }} disabled={contactPicking}
+                title="اختر العميل من جهات الاتصال">
+                {contactPicking ? "..." : "📇 جهات الاتصال"}
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label htmlFor="customerPhone">رقم جوال العميل <span className="required">*</span></label>
             <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
-              <input type="tel" id="customerPhone" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} placeholder="مثال: 0555555555" required className="form-control" style={{ flex: 1 }} />
+              <input type="tel" id="customerPhone" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} placeholder="مثال: 0555555555" required className="form-control" style={{ flex: 1 }} autoComplete="off" />
+              <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.35rem 0.5rem", whiteSpace: "nowrap" }}
+                onClick={() => { setContactSelectMode("phone"); openContactPicker(); }} disabled={contactPicking}
+                title="اختر الرقم من جهات الاتصال">
+                📇
+              </button>
               <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.35rem 0.5rem", whiteSpace: "nowrap" }}
                 onClick={handlePhoneLookup} disabled={phoneLookupLoading || !formData.customerPhone?.trim()}>
                 {phoneLookupLoading ? "..." : "🔍 بحث"}
               </button>
             </div>
+            {contactsError && (
+              <div style={{ marginTop: "0.35rem", padding: "0.45rem 0.6rem", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: "6px", fontSize: "0.75rem", color: "#fca5a5" }}>
+                ⚠️ {contactsError}
+              </div>
+            )}
+            {showContactPick && (
+              <div className="lookup-dropdown" style={{ position: "relative", marginTop: "0.25rem" }}>
+                {contactPickResults.map((c, i) => (
+                  <div key={i} className="lookup-item" onClick={() => applyContact(c)}>
+                    <div className="lookup-item-main">
+                      <span className="lookup-item-name">{c.name || "(بدون اسم)"}</span>
+                      <span className="lookup-item-id">{c.phone}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {showPhoneLookup && (
               <div className="lookup-dropdown" style={{ position: "relative", marginTop: "0.25rem" }}>
                 {phoneLookupResults.length === 0 && !phoneLookupLoading && (
