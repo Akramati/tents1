@@ -174,21 +174,13 @@ export default function CreateBookingView() {
         setContactsError("جهازك أو متصفحك لا يدعم قراءة جهات الاتصال مباشرة. جرّب فتح التطبيق في متصفح كروم على أندرويد أو سفاري على آيفون.");
         return;
       }
-      const props = navigator.contacts.properties;
-      const canName = props.includes("name");
-      const canTel = props.includes("tel");
-      if (!canName && !canTel) {
-        setContactsError("المتصفح لا يسمح بقراءة الاسم أو رقم الجوال من جهات الاتصال.");
-        return;
-      }
-      const fields = [];
-      if (canName) fields.push("name");
-      if (canTel) fields.push("tel");
+      
+      const fields = ["name", "tel"];
       const contacts = await navigator.contacts.select(fields, { multiple: true });
       const normalized = (contacts || [])
         .filter(c => (c.name && c.name.trim()) || (c.tel && c.tel.length))
         .map(c => ({
-          name: (c.name || "").trim(),
+          name: (c.name || []).join(" ").trim() || (c.name || "").toString().trim(),
           phone: (c.tel && c.tel.length) ? c.tel[0].replace(/[^0-9+]/g, "") : "",
         }));
       if (normalized.length === 1) {
@@ -207,10 +199,11 @@ export default function CreateBookingView() {
         persistSavedContacts(merged);
       }
     } catch (err) {
+      console.error("[CONTACTS-ERROR]", err);
       if (err && (err.name === "NotAllowedError" || err.code === 1)) {
         setContactsError("تم رفض إذن الوصول لجهات الاتصال. فعّل الإذن من إعدادات المتصفح ثم أعد المحاولة.");
       } else {
-        setContactsError("تعذّر فتح جهات الاتصال. تأكد من إذن الوصول ثم أعد المحاولة.");
+        setContactsError(`تعذّر فتح جهات الاتصال (${err?.message || "خطأ غير معروف"}). تأكد من إذن الوصول.`);
       }
     }
     setContactPicking(false);
