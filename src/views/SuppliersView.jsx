@@ -26,6 +26,8 @@ export default function SuppliersView() {
   const [payCashAccountCode, setPayCashAccountCode] = useState("1101");
   const [payCostCenter, setPayCostCenter] = useState("");
   const [paySaving, setPaySaving] = useState(false);
+  const [payImageUrl, setPayImageUrl] = useState("");
+  const [payUploading, setPayUploading] = useState(false);
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState({ description: "", totalAmount: "", notes: "", date: "", costCenter: "", accountCode: "" });
   const [purchaseImage, setPurchaseImage] = useState(null);
@@ -81,6 +83,26 @@ export default function SuppliersView() {
     if (code === "2101") return "موردون (ذمم دائنة)";
     return getAccountName(code);
   }, [getAccountName]);
+
+  // Strips the embedded receipt-image marker from notes for display/print
+  const stripImageMarker = (notesStr) => (notesStr || "").replace(/\[صورة السند: .+?\]\s*/g, "").trim();
+
+  // Strips the embedded receipt-image marker from notes and renders a clickable preview icon
+  const renderNotesWithImage = (notesStr) => {
+    if (!notesStr) return "-";
+    const match = notesStr.match(/\[صورة السند: (.+?)\]/);
+    if (match) {
+      const cleanNotes = notesStr.replace(/\[صورة السند: .+?\]\s*/, "").trim();
+      const imageUrl = match[1];
+      return (
+        <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+          <span>{cleanNotes || "-"}</span>
+          <button type="button" className="btn btn-sm btn-ghost" style={{ padding: "0.05rem 0.35rem", fontSize: "0.8rem" }} title="عرض صورة السند" onClick={() => setExpandedImage(imageUrl)}>🖼️</button>
+        </span>
+      );
+    }
+    return notesStr;
+  };
 
   useEffect(() => {
     fetch("/api/finance/cost-centers").then(r => r.json()).then(d => { if (d.success) setCostCenters(d.centers); }).catch(() => {});
@@ -210,6 +232,8 @@ export default function SuppliersView() {
     setPayPurchaseId(purchase?.purchaseId || "");
     setPayCostCenter("");
     setPayCashAccountCode("1101");
+    setPayImageUrl("");
+    setPayUploading(false);
   };
 
   const handleImageUpload = async (file) => {
@@ -305,7 +329,7 @@ export default function SuppliersView() {
                     supplierId: payModal.supplierId,
                     amount: parseFloat(payAmount),
                     date: payDate,
-                    notes: payNotes,
+                    notes: payNotes + (payImageUrl ? ` [صورة السند: ${payImageUrl}]` : ""),
           accountCode: "2101",
           cashAccountCode: payCashAccountCode,
           costCenter: payCostCenter,
@@ -320,6 +344,8 @@ export default function SuppliersView() {
         setPayModal(null);
         setPayAmount("");
         setPayNotes("");
+        setPayImageUrl("");
+        setPayUploading(false);
         fetchSuppliers();
         if (selectedSupplier?.supplierId === payModal.supplierId) {
           setSelectedSupplier(prev => ({ ...prev, balance: data.balance }));
@@ -853,7 +879,7 @@ export default function SuppliersView() {
                               <td>{pt.date}</td>
                               <td style={{ color: "#059669", fontWeight: "bold" }}>{pt.amount.toLocaleString()}</td>
                               <td>{formatPaymentParty(pt.cashAccountCode)}</td>
-                              <td style={{ fontSize: "0.7rem", opacity: 0.7 }}>{pt.notes || "-"}</td>
+                              <td style={{ fontSize: "0.7rem", opacity: 0.7 }}>{renderNotesWithImage(pt.notes)}</td>
                               {userRole === "admin" && (
                                 <td>
                                   <button className="btn btn-sm btn-ghost" style={{ fontSize: "0.55rem", padding: "0.1rem 0.25rem" }}
@@ -913,7 +939,7 @@ export default function SuppliersView() {
                           <td>{pt.date}</td>
                           <td style={{ color: "#059669", fontWeight: "bold" }}>{pt.amount.toLocaleString()}</td>
                           <td>{formatPaymentParty(pt.cashAccountCode)}</td>
-                          <td style={{ fontSize: "0.7rem", opacity: 0.7 }}>{pt.notes || "-"}</td>
+                          <td style={{ fontSize: "0.7rem", opacity: 0.7 }}>{renderNotesWithImage(pt.notes)}</td>
                           {userRole === "admin" && (
                             <td>
                               <button className="btn btn-sm btn-ghost" style={{ fontSize: "0.55rem", padding: "0.1rem 0.25rem" }}
@@ -979,7 +1005,7 @@ export default function SuppliersView() {
                       <td style={{ fontWeight: "bold", color: typeColor }}>{t.amount.toLocaleString()} ر.ي</td>
                       <td style={{ fontSize: "0.75rem" }}>{t.purchaseId || (t.notes?.includes("PUR-") ? t.notes.match(/PUR-\d+/)?.[0] || "-" : "-")}</td>
                       <td style={{ fontSize: "0.75rem" }}>{formatPaymentParty(t.cashAccountCode)}</td>
-                      <td>{t.notes || "-"}</td>
+                      <td>{renderNotesWithImage(t.notes)}</td>
                     </tr>
                   );
                 })}
@@ -1340,6 +1366,29 @@ export default function SuppliersView() {
                       <option key={ac.accountCode} value={ac.accountCode}>{ac.accountName} ({ac.accountCode})</option>
                     ))}
                   </select>
+                </div>
+                <div className="form-group" style={{ marginTop: "0.5rem" }}>
+                  <label>🧾 صورة السند (اختياري)</label>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                    <input type="file" accept="image/*" id="pay-image-file" style={{ display: "none" }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setPayUploading(true);
+                        const url = await handleImageUpload(file);
+                        setPayImageUrl(url);
+                        setPayUploading(false);
+                      }} />
+                    <label htmlFor="pay-image-file" className="btn btn-secondary btn-sm" style={{ cursor: "pointer", margin: 0, fontSize: "0.75rem" }}>
+                      {payUploading ? "جاري الرفع..." : payImageUrl ? "✓ تم إرفاق السند" : "📁 رفع صورة السند"}
+                    </label>
+                    {payImageUrl && (
+                      <>
+                        <a href={payImageUrl} target="_blank" rel="noreferrer" style={{ fontSize: "0.75rem", color: "var(--accent)", textDecoration: "none" }}>👁️ معاينة</a>
+                        <button type="button" className="btn btn-sm btn-ghost text-red" style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }} onClick={() => setPayImageUrl("")}>✕ إزالة</button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">
@@ -1961,7 +2010,7 @@ export default function SuppliersView() {
                         <tr key={pt.transId}><td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{pt.date}</td>
                           <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>تسديد</td>
                           <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>-</td>
-                          <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{pt.notes || "تسديد"}</td>
+                          <td style={{ padding: "0.3rem", border: "1px solid #ccc" }}>{stripImageMarker(pt.notes) || "تسديد"}</td>
                           <td style={{ padding: "0.3rem", border: "1px solid #ccc", textAlign: "center", color: "#059669", fontWeight: "bold" }}>{pt.amount.toLocaleString()}</td>
                           <td style={{ padding: "0.3rem", border: "1px solid #ccc", textAlign: "center" }}>-</td>
                         </tr>
@@ -2035,7 +2084,7 @@ export default function SuppliersView() {
                         <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{pt.date}</td>
                         <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>تسديد</td>
                         <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>-</td>
-                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{pt.notes || ""}</td>
+                        <td style={{ padding: "0.25rem", border: "1px solid #ccc" }}>{stripImageMarker(pt.notes) || ""}</td>
                         <td style={{ padding: "0.25rem", border: "1px solid #ccc", textAlign: "center", color: "#059669" }}>{pt.amount?.toLocaleString()}</td>
                         <td style={{ padding: "0.25rem", border: "1px solid #ccc", textAlign: "center" }}>-</td>
                       </tr>

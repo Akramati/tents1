@@ -43,6 +43,8 @@ export default function TransactionsView() {
   const [fromAccount, setFromAccount] = useState("1101");
   const [toAccount, setToAccount] = useState("1102");
   const [notes, setNotes] = useState("");
+  const [rentImageUrl, setRentImageUrl] = useState("");
+  const [rentUploading, setRentUploading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerResults, setCustomerResults] = useState([]);
@@ -114,6 +116,40 @@ export default function TransactionsView() {
       const d = await r.json();
       if (d.success) setRecentEntries(d.entries || []);
     } catch {}
+  };
+
+  const handleImageUpload = async (file) => {
+    if (!file) return "";
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const tk = localStorage.getItem("token");
+      const res = await fetch("/api/upload", {
+        method: "POST", headers: { Authorization: `Bearer ${tk}` }, body: formData,
+      });
+      const data = await res.json();
+      return data.url || "";
+    } catch { return ""; }
+  };
+
+  // Strips the embedded receipt-image marker from notes for display/print
+  const stripImageMarker = (notesStr) => (notesStr || "").replace(/\[صورة السند: .+?\]\s*/g, "").trim();
+
+  // Renders a clickable preview icon when notes contain an attached receipt image
+  const renderNotesWithImage = (notesStr) => {
+    if (!notesStr) return "-";
+    const match = notesStr.match(/\[صورة السند: (.+?)\]/);
+    if (match) {
+      const cleanNotes = stripImageMarker(notesStr) || "-";
+      const imageUrl = match[1];
+      return (
+        <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+          <span>{cleanNotes}</span>
+          <a href={imageUrl} target="_blank" rel="noreferrer" title="عرض صورة السند" style={{ textDecoration: "none", fontSize: "0.9rem" }}>🖼️</a>
+        </span>
+      );
+    }
+    return notesStr;
   };
 
   useEffect(() => {
@@ -433,7 +469,7 @@ export default function TransactionsView() {
           amount: entryAmount,
           cashAccountCode: cashAccount,
           branch: "DHM",
-          notes: notesStr,
+          notes: notesStr + (rentImageUrl ? ` [صورة السند: ${rentImageUrl}]` : ""),
         }),
       });
       return r.json();
@@ -494,14 +530,14 @@ export default function TransactionsView() {
             amount: parseFloat(amount),
             cashAccountCode: cashAccount,
             branch: "DHM",
-            notes: opType === "rent" ? `إيجار - ${rentYear} - ${effectiveRentPeriodType} - ${rentPeriodVal} - ${notes}` : notes,
+            notes: opType === "rent" ? `إيجار - ${rentYear} - ${effectiveRentPeriodType} - ${rentPeriodVal} - ${notes}${rentImageUrl ? ` [صورة السند: ${rentImageUrl}]` : ""}` : notes + (rentImageUrl ? ` [صورة السند: ${rentImageUrl}]` : ""),
           }),
         });
         d = await r.json();
       }
       if (d.success) {
         setSuccessMsg(`✅ ${op.label}: ${parseFloat(amount).toLocaleString()} ريال`);
-        setAmount(""); setNotes(""); setExpenseAccount(null); fetchRecent();
+        setAmount(""); setNotes(""); setRentImageUrl(""); setRentUploading(false); setExpenseAccount(null); fetchRecent();
         if (opType === "rent" && (rentAcct?.lessorPhone || currentRentConfig?.lessorPhone)) {
           const phone = rentAcct?.lessorPhone || currentRentConfig?.lessorPhone || "";
           const cc = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
@@ -969,6 +1005,29 @@ export default function TransactionsView() {
                               <label>📝 البيان</label>
                               <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder="اختياري..." />
                             </div>
+                            <div className="form-group full-width">
+                              <label>🧾 صورة السند (اختياري)</label>
+                              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                                <input type="file" accept="image/*" id="rent-image-file" style={{ display: "none" }}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setRentUploading(true);
+                                    const url = await handleImageUpload(file);
+                                    setRentImageUrl(url);
+                                    setRentUploading(false);
+                                  }} />
+                                <label htmlFor="rent-image-file" className="btn btn-secondary btn-sm" style={{ cursor: "pointer", margin: 0, fontSize: "0.75rem" }}>
+                                  {rentUploading ? "جاري الرفع..." : rentImageUrl ? "✓ تم إرفاق السند" : "📁 رفع صورة السند"}
+                                </label>
+                                {rentImageUrl && (
+                                  <>
+                                    <a href={rentImageUrl} target="_blank" rel="noreferrer" style={{ fontSize: "0.75rem", color: "var(--accent)", textDecoration: "none" }}>👁️ معاينة</a>
+                                    <button type="button" className="btn btn-sm btn-ghost text-red" style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }} onClick={() => setRentImageUrl("")}>✕ إزالة</button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
                           {preview && (
                             <div className="tx-preview">
@@ -1062,7 +1121,7 @@ export default function TransactionsView() {
                                   <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{rentPeriodVal}</td>
                                   <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontWeight: 700, color: "#ef4444" }}>{formatCurrency(e.amount)}</td>
                                   <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{acctName(e.cashAccountCode)}</td>
-                                  <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{noteClean}</td>
+                                  <td style={{ padding: "0.35rem 0.5rem", borderBottom: "1px solid var(--card-border)", textAlign: "center", fontSize: "0.75rem" }}>{renderNotesWithImage(noteClean)}</td>
                                 </tr>
                               );
                             })}
