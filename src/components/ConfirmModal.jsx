@@ -1,6 +1,6 @@
 "use client";
 
-export default function ConfirmModal({ show, title, message, confirmLabel, confirmClass, onConfirm, onCancel, disabled, children }) {
+export default function ConfirmModal({ show, title, message, confirmLabel, confirmClass, onConfirm, onCancel, disabled, children, cancelLabel, cancelClass }) {
   if (!show) return null;
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -14,7 +14,7 @@ export default function ConfirmModal({ show, title, message, confirmLabel, confi
           {children}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onCancel}>إلغاء</button>
+          <button className={cancelClass || "btn btn-secondary"} onClick={onCancel}>{cancelLabel || "إلغاء"}</button>
           <button className={confirmClass || "btn btn-danger"} onClick={onConfirm} disabled={disabled}>
             {confirmLabel || "تأكيد"}
           </button>

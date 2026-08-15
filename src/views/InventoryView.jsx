@@ -17,18 +17,6 @@ export default function InventoryView({ subTab = "quantities" }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [costMap, setCostMap] = useState({});
   const [rentedMap, setRentedMap] = useState({});
-  const [outstanding, setOutstanding] = useState([]);
-  const [showAlertModal, setShowAlertModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [processingId, setProcessingId] = useState(null);
-
-  const fetchOutstanding = async () => {
-    try {
-      const res = await fetch("/api/bookings/outstanding");
-      const data = await res.json();
-      if (data.success) setOutstanding(data.items || []);
-    } catch (err) { console.error(err); }
-  };
 
   const fetchItems = async () => {
     setLoading(true);
@@ -73,7 +61,6 @@ export default function InventoryView({ subTab = "quantities" }) {
 
   useEffect(() => {
     fetchItems();
-    fetchOutstanding();
   }, []);
 
   const printInventory = () => {
@@ -92,43 +79,7 @@ export default function InventoryView({ subTab = "quantities" }) {
   };
 
   const handlePrintClick = () => {
-    if (outstanding.length > 0) {
-      setShowAlertModal(true);
-    } else {
-      printInventory();
-    }
-  };
-
-  const finalizeInventory = async () => {
-    for (const o of outstanding) {
-      setProcessingId(o.bookingId);
-      try {
-        await fetch("/api/receivables", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookingId: o.bookingId, amount: o.outstandingAmount }),
-        });
-      } catch (err) { console.error(err); }
-    }
-    setProcessingId(null);
-    setOutstanding([]);
     printInventory();
-  };
-
-  const handlePayNow = async (booking) => {
-    setProcessingId(booking.bookingId);
-    try {
-      const res = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: booking.bookingId, amount: booking.outstandingAmount }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchOutstanding();
-      }
-    } catch (err) { console.error(err); }
-    setProcessingId(null);
   };
 
   const handleSubmit = async (e) => {
@@ -388,64 +339,6 @@ export default function InventoryView({ subTab = "quantities" }) {
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm(null)}
       />
-      <ConfirmModal
-        show={showAlertModal}
-        title="⚠️ تنبيه: مبالغ متبقية على الحجز / العميل"
-        message={`هناك مبالغ لم يتم استيفاؤها بعد على (${outstanding.length}) حجز/عميل. هل ترغب بإتمام الجرد وتثبيت المبالغ كذمم مدينة على العملاء، أم ترغب بتسجيل دفعة أولاً؟`}
-        confirmLabel="إتمام الجرد (تحويل لذمم مدينة)"
-        confirmClass="btn btn-gold"
-        cancelLabel="💳 تسجيل دفعة الآن"
-        cancelClass="btn btn-primary"
-        onConfirm={async () => {
-          setShowAlertModal(false);
-          await finalizeInventory();
-        }}
-        onCancel={() => {
-          setShowAlertModal(false);
-          setShowPaymentModal(true);
-        }}
-      />
-      <BottomSheet
-        show={showPaymentModal}
-        title="💳 تسديد المبالغ المتبقية للعملاء والحجوزات"
-        onClose={() => setShowPaymentModal(false)}
-      >
-        <div style={{ padding: "10px 0" }}>
-          {outstanding.length === 0 ? (
-            <p className="text-center">تم استيفاء جميع المبالغ المتبقية! يمكنك الآن إتمام الجرد.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {outstanding.map((o) => (
-                <div key={o.bookingId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", background: "rgba(255,255,255,0.05)", borderRadius: "8px" }}>
-                  <div>
-                    <strong>{o.customerName || `حجز #${o.bookingId}`}</strong>
-                    <div style={{ fontSize: "0.85em", opacity: 0.8 }}>المبلغ المتبقي: {o.outstandingAmount?.toLocaleString()} ﷼</div>
-                  </div>
-                  <button
-                    className="btn btn-sm btn-success"
-                    disabled={processingId === o.bookingId}
-                    onClick={() => handlePayNow(o)}
-                  >
-                    {processingId === o.bookingId ? "جاري التسديد..." : "تسجيل دفعة"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-            <button className="btn btn-gold" onClick={async () => {
-              setShowPaymentModal(false);
-              if (outstanding.length > 0) {
-                setShowAlertModal(true);
-              } else {
-                printInventory();
-              }
-            }}>
-              العودة للجرد
-            </button>
-          </div>
-        </div>
-      </BottomSheet>
     </section>
   );
 }

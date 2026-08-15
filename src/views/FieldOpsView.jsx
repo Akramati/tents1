@@ -58,6 +58,8 @@ export default function FieldOpsView() {
   const [distributionForm, setDistributionForm] = useState({});
   const [completing, setCompleting] = useState(false);
   const [savingRemovalOnly, setSavingRemovalOnly] = useState(false);
+  const [showOutstandingAlert, setShowOutstandingAlert] = useState(false);
+  const [resumeAfterPay, setResumeAfterPay] = useState(false);
   const [completionExpenses, setCompletionExpenses] = useState([]);
   const [completionSelectedAcct, setCompletionSelectedAcct] = useState("");
   const [completionSelectedAmt, setCompletionSelectedAmt] = useState("");
@@ -108,6 +110,16 @@ export default function FieldOpsView() {
   const formatCurrency = (n) => { if (n === undefined || n === null) return "0"; return Number(n).toLocaleString(); };
 
   const closePayModal = () => { setPayModalBooking(null); setPayModalAmount(""); setPayModalConfirmBooking(false); setPayModalCashAccount("1101"); setPayModalCostCenter(""); setPayModalTransportType(""); setPayModalInvoiceLink(""); };
+
+  const closeReceiptAndResume = () => {
+    const shouldResume = resumeAfterPay;
+    setPayReceipt(null);
+    closePayModal();
+    setResumeAfterPay(false);
+    if (shouldResume && completionModal) {
+      handleCompleteField();
+    }
+  };
 
   const accountLookup = useMemo(() => {
     const map = {};
@@ -374,14 +386,15 @@ export default function FieldOpsView() {
     return items.filter((it) => (it.quantityRequested - it.receivedQty - it.damagedQty) > 0).length;
   };
 
-  const handleCompleteField = async () => {
+  const completionRemaining = () => {
+    if (!completionModal) return 0;
+    const stored = parseFloat(completionModal.remainingAmount || 0);
+    return stored > 0 ? stored : Math.max(0, parseFloat(completionModal.totalAmount || 0) - parseFloat(completionModal.paidAmount || 0));
+  };
+
+  const finalizeCompletion = async () => {
     if (!completionModal) return;
     const completionItems = buildCompletionItems();
-    const missing = countRemainingItems(completionItems);
-    if (missing > 0) {
-      setErrorMsg(`لا يمكن إتمام الجرد — يوجد ${missing} صنف لم يُستلم بعد (المتبقي في الميدان). أكمل استلامها أو سجلها توالف/مفقودات ثم أعد المحاولة`);
-      return;
-    }
     setCompleting(true);
     try {
       const damagedItems = completionItems
@@ -435,6 +448,64 @@ export default function FieldOpsView() {
       setErrorMsg("فشل الاتصال بالخادم");
     }
     setCompleting(false);
+  };
+
+  const handleCompleteField = async () => {
+    if (!completionModal) return;
+    const completionItems = buildCompletionItems();
+    const missing = countRemainingItems(completionItems);
+    if (missing > 0) {
+      setErrorMsg(`لا يمكن إتمام الجرد — يوجد ${missing} صنف لم يُستلم بعد (المتبقي في الميدان). أكمل استلامها أو سجلها توالف/مفقودات ثم أعد المحاولة`);
+      return;
+    }
+    const remaining = completionRemaining();
+    if (remaining > 0) {
+      setShowOutstandingAlert(true);
+      return;
+    }
+    await finalizeCompletion();
+  };
+
+  const handleTransferToReceivable = async () => {
+    if (!completionModal) return;
+    setShowOutstandingAlert(false);
+    setCompleting(true);
+    try {
+      const amount = completionRemaining();
+      if (amount <= 0) {
+        await finalizeCompletion();
+        return;
+      }
+      const res = await fetch("/api/receivables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: completionModal.bookingId, amount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg(`تم تحويل المبالغ المتبقية للذمم المدينة (${amount.toLocaleString()} ﷼)`);
+        setCompletionModal((prev) => (prev ? { ...prev, remainingAmount: 0, paidAmount: (parseFloat(prev.paidAmount || 0) + amount).toString() } : prev));
+        await finalizeCompletion();
+      } else {
+        setErrorMsg(data.error || "فشل تحويل المبالغ للذمم المدينة");
+      }
+    } catch (err) {
+      setErrorMsg("خطأ في الاتصال بالخادم");
+    }
+    setCompleting(false);
+  };
+
+  const handlePayNowFromAlert = () => {
+    if (!completionModal) return;
+    setShowOutstandingAlert(false);
+    setResumeAfterPay(true);
+    setPayModalBooking(completionModal);
+    setPayModalAmount(completionRemaining() ? String(completionRemaining()) : "");
+    setPayModalConfirmBooking(false);
+    setPayModalCashAccount("1101");
+    setPayModalCostCenter("");
+    setPayModalTransportType("");
+    setPayModalInvoiceLink("");
   };
 
   const handleSaveRemovalOnly = async () => {
@@ -1120,6 +1191,18 @@ export default function FieldOpsView() {
         </div>
       )}
 
+      <ConfirmModal
+        show={showOutstandingAlert}
+        title="⚠️ تنبيه: مبالغ متبقية على الحجز / العميل"
+        message={`يوجد مبلغ متبقي ${completionRemaining().toLocaleString()} ﷼ على الحجز ${completionModal?.bookingId || ""} (${completionModal?.customerName || ""}). هل ترغب بإتمام الجرد وتثبيت المبلغ كذمم مدينة على العميل، أم ترغب بتسجيل دفعة أولاً؟`}
+        confirmLabel="إتمام الجرد (تحويل لذمم مدينة)"
+        confirmClass="btn btn-gold"
+        cancelLabel="💳 تسجيل دفعة الآن"
+        cancelClass="btn btn-primary"
+        onConfirm={handleTransferToReceivable}
+        onCancel={handlePayNowFromAlert}
+      />
+
       {/* Extend Modal */}
       {extendModal && (
         <div className="modal-overlay" onClick={() => setExtendModal(null)}>
@@ -1429,6 +1512,11 @@ export default function FieldOpsView() {
                     });
                     const data = await res.json();
                     if (data.success) {
+                      if (resumeAfterPay && completionModal) {
+                        setCompletionModal((prev) =>
+                          prev ? { ...prev, paidAmount: data.paidAmount, remainingAmount: data.remainingAmount } : prev
+                        );
+                      }
                       setPayReceipt({
                         booking: { ...payModalBooking, paidAmount: data.paidAmount, remainingAmount: data.remainingAmount, status: data.status },
                         amount: amt,
@@ -1453,11 +1541,11 @@ export default function FieldOpsView() {
 
       {/* Payment Receipt */}
       {payReceipt && (
-        <div className="modal-overlay" onClick={() => { setPayReceipt(null); closePayModal(); }}>
+        <div className="modal-overlay" onClick={closeReceiptAndResume}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth:"520px"}}>
             <div className="modal-header">
               <h2>🧾 سند قبض</h2>
-              <button className="modal-close" onClick={() => { setPayReceipt(null); closePayModal(); }}>✕</button>
+              <button className="modal-close" onClick={closeReceiptAndResume}>✕</button>
             </div>
             <div className="modal-body">
               <div className="receipt-card" style={{padding:"1rem",background:"rgba(255,255,255,0.03)",borderRadius:"12px",border:"1px solid rgba(255,215,0,0.15)"}}>
@@ -1510,7 +1598,7 @@ export default function FieldOpsView() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => { setPayReceipt(null); closePayModal(); }}>إغلاق</button>
+              <button className="btn btn-secondary" onClick={closeReceiptAndResume}>إغلاق</button>
               <button className="btn btn-gold" onClick={() => { setPayReceipt(null); closePayModal(); setPayModalCashAccount("1101"); }}>
                 ➕ تسجيل دفعة أخرى
               </button>
