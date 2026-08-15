@@ -5,6 +5,8 @@ import { amountInWords } from "@/lib/numberToWords";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
+const CC = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "967";
+
 export default function SuppliersView() {
   const { print, setView, setPaymentRedirect, setErrorMsg, setSuccessMsg, userRole } = useApp();
   const fileInputRef = useRef(null);
@@ -611,6 +613,10 @@ export default function SuppliersView() {
 
   const viewCustomer = (c) => setSelectedCustomer(c);
   const backToCustomers = () => setSelectedCustomer(null);
+
+  const customerMsgText = (name, amount) => (amount > 0
+    ? `عزيزي ${name || ""}،\nالمبلغ المتبقي في ذمتكم: ${amount.toLocaleString()} ريال.\nنرجو تسديد ما تبقى عندكم. ولكم جزيل الشكر.`
+    : `مرحباً ${name || ""}،\nنشكركم على التعامل مع هابي لاند لتأجير الخيام والتجهيزات.`);
 
   const filteredSuppliers = suppliers.filter(s => s.isActive).filter(s => {
     if (!searchTerm) return true;
@@ -1430,7 +1436,7 @@ export default function SuppliersView() {
         <div className="card" style={{ padding: "1rem", marginBottom: "1rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
             <div>
-              {c.customerPhone && <div style={{ fontSize: "0.85rem" }}>📞 {c.customerPhone}</div>}
+              {c.customerPhone && <div style={{ fontSize: "0.85rem" }}>📞 <a href={`tel:${c.customerPhone}`} style={{ color: "inherit", textDecoration: "none", direction: "ltr", display: "inline-block" }}>{c.customerPhone}</a></div>}
               <div style={{ fontSize: "0.75rem", opacity: 0.6, marginTop: "0.25rem" }}>{totalBookingsCount} حجز{c.totalRemaining > 0 ? ` | ذمة: ${formatCurrency(c.totalRemaining)} ر.ي` : ""}</div>
             </div>
             <div style={{ textAlign: "left" }}>
@@ -1487,6 +1493,13 @@ export default function SuppliersView() {
                   footer: `الإجمالي: ${formatCurrency(c.totalAmount)} | المدفوع: ${formatCurrency(c.totalPaid)} | المتبقي: ${formatCurrency(c.totalRemaining)}`,
                 });
               }}>🖨️ طباعة كشف حساب</button>
+            {c.customerPhone && (
+              <>
+                <a href={`https://wa.me/${c.customerPhone.replace(/^0+/, CC)}?text=${encodeURIComponent(customerMsgText(c.customerName, c.totalRemaining))}`}
+                  target="_blank" rel="noopener noreferrer" className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#25D366", borderColor: "#25D366", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>📱 واتساب</a>
+                <a href={`tel:${c.customerPhone}`} className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#3b82f6", borderColor: "#3b82f6", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>📞 اتصال</a>
+              </>
+            )}
             {c.totalRemaining > 0 && (
               <button className="card-btn" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#059669", borderColor: "#059669" }}
                 onClick={() => {
@@ -1695,7 +1708,11 @@ export default function SuppliersView() {
                           {c.customerName || "بدون اسم"}
                         </button>
                       </td>
-                      <td>{c.customerPhone || "-"}</td>
+                      <td dir="ltr">
+                        {c.customerPhone ? (
+                          <a href={`tel:${c.customerPhone}`} style={{ color: "inherit", textDecoration: "none", display: "inline-block" }}>{c.customerPhone}</a>
+                        ) : "-"}
+                      </td>
                       <td style={{ textAlign: "center" }}>{c.bookings.length}</td>
                       <td style={{ fontWeight: "bold" }}>{c.totalAmount.toLocaleString()}</td>
                       <td style={{ color: "#059669" }}>{c.totalPaid.toLocaleString()}</td>
@@ -1706,6 +1723,14 @@ export default function SuppliersView() {
                       <td>
                         <button className="card-btn" style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem", color: "#6366f1", borderColor: "#6366f1" }}
                           onClick={() => viewCustomer(c)}>👤</button>
+                        {c.customerPhone && (
+                          <>
+                            <a href={`https://wa.me/${c.customerPhone.replace(/^0+/, CC)}?text=${encodeURIComponent(customerMsgText(c.customerName, shownRemaining))}`}
+                              target="_blank" rel="noopener noreferrer" className="card-btn" style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem", color: "#25D366", borderColor: "#25D366", marginRight: "0.25rem", textDecoration: "none", display: "inline-flex", alignItems: "center" }} title="واتساب">📱</a>
+                            <a href={`sms:${c.customerPhone}?body=${encodeURIComponent(customerMsgText(c.customerName, shownRemaining))}`}
+                              className="card-btn" style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem", color: "#3b82f6", borderColor: "#3b82f6", marginRight: "0.25rem", textDecoration: "none", display: "inline-flex", alignItems: "center" }} title="SMS">💬</a>
+                          </>
+                        )}
                         {shownRemaining > 0 && (
                           <button className="card-btn" style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem", color: "#059669", borderColor: "#059669", marginRight: "0.25rem" }}
                             onClick={() => {
