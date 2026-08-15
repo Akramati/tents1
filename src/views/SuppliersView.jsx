@@ -584,12 +584,17 @@ export default function SuppliersView() {
     for (const b of allBookings) {
       const key = `${(b.customerName || "").trim()}|${(b.customerPhone || "").trim()}`;
       if (!map[key]) {
-        map[key] = { customerName: b.customerName || "", customerPhone: b.customerPhone || "", bookings: [], totalAmount: 0, totalPaid: 0, totalRemaining: 0 };
+        map[key] = { customerName: b.customerName || "", customerPhone: b.customerPhone || "", bookings: [], totalAmount: 0, totalPaid: 0, totalRemaining: 0, debtRemaining: 0, latestDate: "" };
       }
       map[key].bookings.push(b);
       map[key].totalAmount += b.totalAmount || 0;
       map[key].totalPaid += b.paidAmount || 0;
       map[key].totalRemaining += b.remainingAmount || 0;
+      if (b.status === "مكتمل" || b.status === "منتهي") {
+        map[key].debtRemaining += b.remainingAmount || 0;
+      }
+      const d = b.endDate || b.startDate || "";
+      if (d && d > (map[key].latestDate || "")) map[key].latestDate = d;
     }
     return Object.values(map);
   }, [allBookings]);
@@ -600,8 +605,8 @@ export default function SuppliersView() {
       const term = customerSearch.toLowerCase();
       list = list.filter(c => c.customerName.toLowerCase().includes(term) || (c.customerPhone || "").includes(term));
     }
-    if (onlyDebtors) list = list.filter(c => c.totalRemaining > 0);
-    return list.sort((a, b) => b.totalRemaining - a.totalRemaining || b.totalAmount - a.totalAmount);
+    if (onlyDebtors) list = list.filter(c => c.debtRemaining > 0);
+    return list.sort((a, b) => (b.latestDate || "").localeCompare(a.latestDate || "") || b.totalRemaining - a.totalRemaining);
   }, [customerData, customerSearch, onlyDebtors]);
 
   const viewCustomer = (c) => setSelectedCustomer(c);
@@ -1499,7 +1504,7 @@ export default function SuppliersView() {
               </tr>
             </thead>
             <tbody>
-              {c.bookings.map(b => (
+              {[...c.bookings].sort((a, b) => (b.startDate || "").localeCompare(a.startDate || "")).map(b => (
                 <tr key={b.bookingId} style={b.remainingAmount > 0 ? { background: "rgba(220,38,38,0.05)" } : {}}>
                   <td style={{ fontWeight: "bold", fontSize: "0.75rem" }}>{b.bookingId}</td>
                   <td style={{ fontSize: "0.75rem" }}>{b.bookingType || "-"}</td>
@@ -1680,8 +1685,10 @@ export default function SuppliersView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCustomers.map((c, i) => (
-                    <tr key={`${c.customerName}|${c.customerPhone}`} style={c.totalRemaining > 0 ? { background: "rgba(220,38,38,0.04)" } : {}}>
+                  {filteredCustomers.map((c, i) => {
+                    const shownRemaining = onlyDebtors ? c.debtRemaining : c.totalRemaining;
+                    return (
+                    <tr key={`${c.customerName}|${c.customerPhone}`} style={shownRemaining > 0 ? { background: "rgba(220,38,38,0.04)" } : {}}>
                       <td>{i + 1}</td>
                       <td>
                         <button className="link-btn" onClick={() => viewCustomer(c)} style={{ fontWeight: "bold" }}>
@@ -1692,14 +1699,14 @@ export default function SuppliersView() {
                       <td style={{ textAlign: "center" }}>{c.bookings.length}</td>
                       <td style={{ fontWeight: "bold" }}>{c.totalAmount.toLocaleString()}</td>
                       <td style={{ color: "#059669" }}>{c.totalPaid.toLocaleString()}</td>
-                      <td style={{ fontWeight: "bold", color: c.totalRemaining > 0 ? "#dc2626" : "#059669" }}>
-                        {c.totalRemaining.toLocaleString()}
-                        {c.totalRemaining > 0 && <span style={{ fontSize: "0.7rem", marginRight: "0.3rem" }}>🔴</span>}
+                      <td style={{ fontWeight: "bold", color: shownRemaining > 0 ? "#dc2626" : "#059669" }}>
+                        {shownRemaining.toLocaleString()}
+                        {shownRemaining > 0 && <span style={{ fontSize: "0.7rem", marginRight: "0.3rem" }}>🔴</span>}
                       </td>
                       <td>
                         <button className="card-btn" style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem", color: "#6366f1", borderColor: "#6366f1" }}
                           onClick={() => viewCustomer(c)}>👤</button>
-                        {c.totalRemaining > 0 && (
+                        {shownRemaining > 0 && (
                           <button className="card-btn" style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem", color: "#059669", borderColor: "#059669", marginRight: "0.25rem" }}
                             onClick={() => {
                               setView("payment");
@@ -1708,7 +1715,8 @@ export default function SuppliersView() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {filteredCustomers.length === 0 && (
                     <tr><td colSpan="8" style={{ textAlign: "center", padding: "1rem" }}>
                       {customerSearch || onlyDebtors ? "لا توجد نتائج" : "لا توجد حجوزات"}
@@ -1721,8 +1729,8 @@ export default function SuppliersView() {
 
           <div style={{ fontSize: "0.75rem", opacity: 0.5, marginTop: "0.5rem", textAlign: "center", display: "flex", justifyContent: "center", gap: "1rem" }}>
             <span>إجمالي العملاء: {customerData.length}</span>
-            <span>العملاء المدينة: {customerData.filter(c => c.totalRemaining > 0).length}</span>
-            <span>إجمالي الذمم: {customerData.reduce((s, c) => s + c.totalRemaining, 0).toLocaleString()} ر.ي</span>
+            <span>العملاء المدينة: {customerData.filter(c => c.debtRemaining > 0).length}</span>
+            <span>إجمالي الذمم: {customerData.reduce((s, c) => s + c.debtRemaining, 0).toLocaleString()} ر.ي</span>
           </div>
         </>
       ))}
