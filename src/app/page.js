@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
-import OperationsWorkspace from "@/views/OperationsWorkspace";
+import FieldHub from "@/hubs/FieldHub";
 import { useAuth } from "@/contexts/AuthContext";
 import GeminiChat from "@/components/GeminiChat";
 
@@ -55,9 +55,8 @@ export default function Home() {
       )}
 
       {/* Main View Area */}
-      {/* Main View Area */}
       <main className="content-area">
-        <OperationsWorkspace />
+        <FieldHub embedded />
       </main>
 
       <footer className="main-footer glass">

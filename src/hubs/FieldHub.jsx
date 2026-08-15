@@ -7,7 +7,7 @@ import CreateBookingView from "@/views/CreateBookingView";
 import OperationsWorkspace from "@/views/OperationsWorkspace";
 import { useApp } from "@/contexts/AppContext";
 
-export default function FieldHub() {
+export default function FieldHub({ embedded = false }) {
   const { view, setView } = useApp();
   const [activeTab, setActiveTab] = useState("menu"); // "menu" | "query" | "create" | "fieldops" | "operations"
   const [authorized, setAuthorized] = useState(false);
@@ -64,15 +64,17 @@ export default function FieldHub() {
 
       {activeTab === "menu" ? (
         <div className="operations-menu" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <header className="main-header glass" style={{ marginBottom: "1.5rem" }}>
-            <div className="logo-container">
-              <div className="crown-icon">💼</div>
-              <div>
-                <h1>هابي لاند</h1>
-                <p>إدارة العمليات اليومية</p>
+          {!embedded && (
+            <header className="main-header glass" style={{ marginBottom: "1.5rem" }}>
+              <div className="logo-container">
+                <div className="crown-icon">💼</div>
+                <div>
+                  <h1>هابي لاند</h1>
+                  <p>إدارة العمليات اليومية</p>
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {/* 1. كرت الاستعلام */}
