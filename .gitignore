@@ -53,6 +53,9 @@ bookings_check.json
 *.txt
 start-server.bat
 
+# generated at build time by scripts/gen-build-info.mjs
+src/lib/buildInfo.js
+
 # uploaded images (not used in production - use Google Drive)
 public/uploads/
 

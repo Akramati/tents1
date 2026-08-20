@@ -6,6 +6,7 @@ import QueryView from "@/views/QueryView";
 import CreateBookingView from "@/views/CreateBookingView";
 import OperationsWorkspace from "@/views/OperationsWorkspace";
 import { useApp } from "@/contexts/AppContext";
+import { BUILD_SHA } from "@/lib/buildInfo";
 
 export default function FieldHub({ embedded = false }) {
   const { view, setView } = useApp();
@@ -184,6 +185,10 @@ export default function FieldHub({ embedded = false }) {
                 <p style={{ margin: 0, opacity: 0.7, fontSize: "0.9rem" }}>الوصول للقائمة الجانبية وكافة التبويبات والخيارات الإدارية</p>
               </div>
             </button>
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: "1.5rem", opacity: 0.55, fontSize: "0.8rem", direction: "ltr" }}>
+            الإصدار: {BUILD_SHA || "unknown"}
           </div>
         </div>
       ) : (
