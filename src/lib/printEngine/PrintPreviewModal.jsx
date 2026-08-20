@@ -53,20 +53,43 @@ export default function PrintPreviewModal({
     if (!el) return;
     const origWidth = el.style.width;
     const origHeight = el.style.height;
-    el.style.width = "794px";
+    const origMinWidth = el.style.minWidth;
+    const isA5 = previewSettings.templateType === "A5";
+    const targetWidth = isA5 ? "560px" : "794px";
+
+    el.style.width = targetWidth;
+    el.style.minWidth = targetWidth;
     el.style.height = "auto";
     el.style.margin = "0 auto";
+
     const scrollEl = el.closest(".preview-scroll");
     const origOverflow = scrollEl?.style.overflowY;
+    const origOverflowX = scrollEl?.style.overflowX;
+    const origDisplay = scrollEl?.style.display;
     const origSh = scrollEl?.style.height;
-    if (scrollEl) { scrollEl.style.overflowY = "visible"; scrollEl.style.height = "auto"; }
+
+    if (scrollEl) {
+      scrollEl.style.overflowY = "visible";
+      scrollEl.style.overflowX = "visible";
+      scrollEl.style.display = "block";
+      scrollEl.style.height = "auto";
+    }
+
     await new Promise(r => setTimeout(r, 400));
     const rect = el.getBoundingClientRect();
     const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", width: rect.width, height: rect.height, y: 0, scrollY: 0, windowWidth: rect.width, windowHeight: rect.height });
+
     el.style.width = origWidth || "";
+    el.style.minWidth = origMinWidth || "";
     el.style.height = origHeight || "";
     el.style.margin = "";
-    if (scrollEl) { scrollEl.style.overflowY = origOverflow || ""; scrollEl.style.height = origSh || ""; }
+    if (scrollEl) {
+      scrollEl.style.overflowY = origOverflow || "";
+      scrollEl.style.overflowX = origOverflowX || "";
+      scrollEl.style.display = origDisplay || "";
+      scrollEl.style.height = origSh || "";
+    }
+
     const link = document.createElement("a");
     link.download = `${documentTitle || "document"}.png`;
     link.href = canvas.toDataURL("image/png");
@@ -78,22 +101,45 @@ export default function PrintPreviewModal({
     if (!el) return;
     const origWidth = el.style.width;
     const origHeight = el.style.height;
-    el.style.width = "794px";
+    const origMinWidth = el.style.minWidth;
+    const isA5 = previewSettings.templateType === "A5";
+    const targetWidth = isA5 ? "560px" : "794px";
+
+    el.style.width = targetWidth;
+    el.style.minWidth = targetWidth;
     el.style.height = "auto";
     el.style.margin = "0 auto";
+
     const scrollEl = el.closest(".preview-scroll");
     const origOverflow = scrollEl?.style.overflowY;
+    const origOverflowX = scrollEl?.style.overflowX;
+    const origDisplay = scrollEl?.style.display;
     const origSh = scrollEl?.style.height;
-    if (scrollEl) { scrollEl.style.overflowY = "visible"; scrollEl.style.height = "auto"; }
+
+    if (scrollEl) {
+      scrollEl.style.overflowY = "visible";
+      scrollEl.style.overflowX = "visible";
+      scrollEl.style.display = "block";
+      scrollEl.style.height = "auto";
+    }
+
     await new Promise(r => setTimeout(r, 400));
     const rect = el.getBoundingClientRect();
     const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", width: rect.width, height: rect.height, y: 0, scrollY: 0, windowWidth: rect.width, windowHeight: rect.height });
+
     el.style.width = origWidth || "";
+    el.style.minWidth = origMinWidth || "";
     el.style.height = origHeight || "";
     el.style.margin = "";
-    if (scrollEl) { scrollEl.style.overflowY = origOverflow || ""; scrollEl.style.height = origSh || ""; }
+    if (scrollEl) {
+      scrollEl.style.overflowY = origOverflow || "";
+      scrollEl.style.overflowX = origOverflowX || "";
+      scrollEl.style.display = origDisplay || "";
+      scrollEl.style.height = origSh || "";
+    }
+
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
-    const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF("p", "mm", isA5 ? "a5" : "a4");
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const imgH = (canvas.height * pageW) / canvas.width;
@@ -114,22 +160,44 @@ export default function PrintPreviewModal({
     try {
       const origWidth = el.style.width;
       const origHeight = el.style.height;
+      const origMinWidth = el.style.minWidth;
       const isA5 = previewSettings.templateType === "A5";
-      const scrollEl = el.closest(".preview-scroll");
-      const origOverflow = scrollEl?.style.overflowY;
-      const origSh = scrollEl?.style.height;
-      if (scrollEl) { scrollEl.style.overflowY = "visible"; scrollEl.style.height = "auto"; }
-      el.style.width = isA5 ? "560px" : "794px";
+      const targetWidth = isA5 ? "560px" : "794px";
+
+      el.style.width = targetWidth;
+      el.style.minWidth = targetWidth;
       el.style.height = "auto";
       el.style.margin = "0 auto";
-      await new Promise(r => setTimeout(r, 200));
+
+      const scrollEl = el.closest(".preview-scroll");
+      const origOverflow = scrollEl?.style.overflowY;
+      const origOverflowX = scrollEl?.style.overflowX;
+      const origDisplay = scrollEl?.style.display;
+      const origSh = scrollEl?.style.height;
+
+      if (scrollEl) {
+        scrollEl.style.overflowY = "visible";
+        scrollEl.style.overflowX = "visible";
+        scrollEl.style.display = "block";
+        scrollEl.style.height = "auto";
+      }
+
+      await new Promise(r => setTimeout(r, 400));
       el.scrollTop = 0;
       const rect = el.getBoundingClientRect();
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff", height: rect.height, width: rect.width, y: 0, scrollY: 0, windowWidth: rect.width, windowHeight: rect.height });
+
       el.style.width = origWidth || "";
+      el.style.minWidth = origMinWidth || "";
       el.style.height = origHeight || "";
       el.style.margin = "";
-      if (scrollEl) { scrollEl.style.overflowY = origOverflow || ""; scrollEl.style.height = origSh || ""; }
+      if (scrollEl) {
+        scrollEl.style.overflowY = origOverflow || "";
+        scrollEl.style.overflowX = origOverflowX || "";
+        scrollEl.style.display = origDisplay || "";
+        scrollEl.style.height = origSh || "";
+      }
+
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const pdf = new jsPDF("p", "mm", isA5 ? "a5" : "a4");
       const pageW = pdf.internal.pageSize.getWidth();
