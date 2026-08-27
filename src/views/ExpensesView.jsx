@@ -11,7 +11,13 @@ export default function ExpensesView() {
   const [accounts, setAccounts] = useState([]);
   const [ledger, setLedger] = useState([]);
   const [allBookings, setAllBookings] = useState([]);
-  const [filterDate, setFilterDate] = useState(getTodayString?.() || new Date().toISOString().split("T")[0]);
+  const [fromDate, setFromDate] = useState(() => {
+    const today = getTodayString?.() || new Date().toISOString().split("T")[0];
+    return today.slice(0, 8) + "01";
+  });
+  const [toDate, setToDate] = useState(getTodayString?.() || new Date().toISOString().split("T")[0]);
+  const [filterAccountCode, setFilterAccountCode] = useState("");
+  const [filterAccountQuery, setFilterAccountQuery] = useState("");
 
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedCashAccount, setSelectedCashAccount] = useState("1101");
@@ -75,8 +81,10 @@ export default function ExpensesView() {
   const fetchAccounts = async () => {
     try { const r = await fetch(`/api/finance/accounts?includeInactive=${showHiddenAccounts}`); const d = await r.json(); if (d.success) setAccounts(d.accounts || []); } catch {}
   };
-  const fetchLedger = async (date) => {
-    try { const p = new URLSearchParams(); if (date) { p.set("from", date); p.set("to", date); } const r = await fetch(`/api/finance/ledger?${p}`); const d = await r.json(); if (d.success) { setLedger(d.entries || []); setCumulativeBalances(d.cumulativeBalances || {}); } } catch {}
+  const fetchLedger = async (from, to) => {
+    const fromVal = from !== undefined ? from : fromDate;
+    const toVal = to !== undefined ? to : (from !== undefined ? from : toDate);
+    try { const p = new URLSearchParams(); if (fromVal) p.set("from", fromVal); if (toVal) p.set("to", toVal); const r = await fetch(`/api/finance/ledger?${p}`); const d = await r.json(); if (d.success) { setLedger(d.entries || []); setCumulativeBalances(d.cumulativeBalances || {}); } } catch {}
   };
   const fetchCostCenters = async () => {
     try { const r = await fetch("/api/finance/cost-centers"); const d = await r.json(); if (d.success) setCostCenters(d.centers || []); } catch {}
@@ -86,7 +94,7 @@ export default function ExpensesView() {
   };
 
   useEffect(() => { fetchAccounts(); }, [showHiddenAccounts]);
-  useEffect(() => { fetchLedger(filterDate); fetchCostCenters(); fetchBookingTypeMap(); fetch("/api/bookings?limit=500").then(r => r.json()).then(d => { if (d.success) setAllBookings(d.bookings || []); }).catch(() => {}); fetch("/api/finance/branches").then(r => r.json()).then(d => { if (d.success) setBranches(d.branches || []); }).catch(() => {}); fetch("/api/inventory").then(r => r.json()).then(d => { if (d.success) setInventoryItems(d.items || []); }).catch(() => {}); }, []);
+  useEffect(() => { fetchLedger(fromDate, toDate); fetchCostCenters(); fetchBookingTypeMap(); fetch("/api/bookings?limit=500").then(r => r.json()).then(d => { if (d.success) setAllBookings(d.bookings || []); }).catch(() => {}); fetch("/api/finance/branches").then(r => r.json()).then(d => { if (d.success) setBranches(d.branches || []); }).catch(() => {}); fetch("/api/inventory").then(r => r.json()).then(d => { if (d.success) setInventoryItems(d.items || []); }).catch(() => {}); }, []);
 
   const searchBookings = async (term, date) => {
     setBookingSearchLoading(true);
@@ -240,7 +248,7 @@ export default function ExpensesView() {
       setAmount(""); setNotes(""); setLinkedBookingId(""); setInvoiceNumber(""); setInvoiceLink(""); setEntryCostCenter(""); setEntryTransportType("");
       setPurchaseItemId(""); setPurchaseItemName(""); setPurchaseQuantity("1"); setShowNewItemInput(false);
       setSelectedAccount(null); setSelectedBooking(null);
-      fetchLedger(filterDate);
+      fetchLedger(fromDate, toDate);
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
   };
@@ -278,7 +286,7 @@ export default function ExpensesView() {
         }),
       });
       const data = await res.json();
-      if (data.success) { setSuccessMsg("تم"); setEditEntry(null); setLinkedBookingId(""); setSelectedBooking(null); fetchLedger(filterDate); }
+      if (data.success) { setSuccessMsg("تم"); setEditEntry(null); setLinkedBookingId(""); setSelectedBooking(null); fetchLedger(fromDate, toDate); }
       else setErrorMsg(data.error || "فشل");
     } catch { setErrorMsg("خطأ"); }
     setSubmitting(false);
@@ -290,7 +298,7 @@ export default function ExpensesView() {
       const tk = localStorage.getItem("token");
       const res = await fetch(`/api/finance/ledger?journalId=${deleteConfirm.journalId}`, { method: "DELETE", headers: { Authorization: `Bearer ${tk}` } });
       const data = await res.json();
-      if (data.success) { setDeleteConfirm(null); setSuccessMsg("تم"); setEditEntry(null); setLinkedBookingId(""); setSelectedBooking(null); fetchLedger(filterDate); }
+      if (data.success) { setDeleteConfirm(null); setSuccessMsg("تم"); setEditEntry(null); setLinkedBookingId(""); setSelectedBooking(null); fetchLedger(fromDate, toDate); }
     } catch { setErrorMsg("خطأ"); }
   };
 
@@ -314,7 +322,7 @@ export default function ExpensesView() {
       const d = await res.json();
       if (d.success) {
         setSuccessMsg(`تم التحويل: ${d.journalIds?.length || 0} قيد`);
-        setTransferAmount(""); setTransferNotes(""); fetchLedger(filterDate);
+        setTransferAmount(""); setTransferNotes(""); fetchLedger(fromDate, toDate);
       } else setErrorMsg(d.error || "فشل التحويل");
     } catch { setErrorMsg("خطأ"); }
     setTransferSubmitting(false);
@@ -369,8 +377,20 @@ export default function ExpensesView() {
       items = items.filter(e => (e.branch || "DHM") === ledgerBranchFilter);
     }
     if (ledgerCostCenterFilter) items = items.filter(e => e.costCenter === ledgerCostCenterFilter);
+    if (filterAccountCode) items = items.filter(e => e.accountCode === filterAccountCode);
+    if (filterAccountQuery) {
+      const q = filterAccountQuery.toLowerCase().trim();
+      const matchingAccts = accounts.filter(a =>
+        (a.accountName || "").toLowerCase().includes(q) ||
+        (a.accountCode || "").toLowerCase().includes(q)
+      ).map(a => a.accountCode);
+      items = items.filter(e =>
+        matchingAccts.includes(e.accountCode) ||
+        (e.notes && e.notes.toLowerCase().includes(q))
+      );
+    }
     return [...items].sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.journalId) - parseInt(a.journalId));
-  }, [ledger, filterCashAccount, ledgerCostCenterFilter, ledgerBranchFilter]);
+  }, [ledger, filterCashAccount, ledgerCostCenterFilter, ledgerBranchFilter, filterAccountCode, filterAccountQuery, accounts]);
 
   const totals = useMemo(() => {
     const income = filteredLedger.filter(e => e.entryType === "income").reduce((s, e) => s + e.amount, 0);
@@ -423,7 +443,7 @@ export default function ExpensesView() {
             };
             print("REPORT_TABLE", {
               title: "دفتر اليومية",
-              dateHeader: filterDate || new Date().toLocaleDateString("en-CA"),
+              dateHeader: (fromDate === toDate) ? (fromDate || new Date().toLocaleDateString("en-CA")) : `${fromDate || "البداية"} إلى ${toDate || "النهاية"}`,
               headers: ["التاريخ", "من (دائن)", "إلى (مدين)", "المبلغ", "الخزينة", "البيان"],
               rows: filteredLedger.map(e => ({
                 cells: [e.date || "-", e.entryType === "income" || e.entryType === "liability" ? acctName(e.accountCode) : acctName(e.cashAccountCode) || "-", e.entryType === "expense" ? acctName(e.accountCode) : acctName(e.cashAccountCode) || "-", formatCurrency(e.amount), acctName(e.cashAccountCode) || "-", enrichNotes(e)],
@@ -873,30 +893,125 @@ export default function ExpensesView() {
         <div className="inv-table-wrapper">
           <div className="section-title-row" style={{ marginBottom: "0.75rem" }}>
             <h3 style={{ fontSize: "1rem" }}>📋 دفتر اليومية</h3>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-              <select className="form-control" style={{ width: "auto", maxWidth: "140px", fontSize: "0.8rem" }} value={filterCashAccount} onChange={(e) => setFilterCashAccount(e.target.value)}>
-                <option value="">كل الخزائن</option>
-                {cashAccounts.map(a => (
-                  <option key={a.accountCode} value={a.accountCode}>{a.accountCode} — {a.accountName}</option>
-                ))}
-              </select>
-              <select className="form-control" style={{ width: "auto", maxWidth: "120px", fontSize: "0.8rem" }} value={ledgerBranchFilter} onChange={(e) => { const v = e.target.value; setLedgerBranchFilter(v); if (v && ledgerCostCenterFilter && !ledgerCostCenterFilter.startsWith(`CC-${v}`)) setLedgerCostCenterFilter(""); }}>
-                <option value="">كل الفروع</option>
-                {branches.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-              </select>
-              <select className="form-control" style={{ width: "auto", maxWidth: "160px", fontSize: "0.8rem" }} value={ledgerCostCenterFilter} onChange={(e) => setLedgerCostCenterFilter(e.target.value)}>
-                <option value="">كل المراكز</option>
-                {costCenters.filter(c => {
-                  if (c.type !== "booking" && c.type !== "administrative") return false;
-                  if (ledgerBranchFilter && !c.code.startsWith(`CC-${ledgerBranchFilter}`)) return false;
-                  return true;
-                }).map(c => (
-                  <option key={c.code} value={c.code}>{c.name}</option>
-                ))}
-              </select>
-              <DualCalendarPicker value={filterDate} onChange={(val) => { setFilterDate(val); fetchLedger(val); }} />
+          </div>
+
+          <div className="glass" style={{ padding: "1rem", borderRadius: "12px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", marginBottom: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: "bold", marginBottom: "0.25rem", display: "block" }}>الفترة الزمنية</label>
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: "0.7rem", opacity: 0.6, display: "block", marginBottom: "0.1rem" }}>من تاريخ:</span>
+                    <DualCalendarPicker value={fromDate} onChange={(val) => { setFromDate(val); fetchLedger(val, toDate); }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: "0.7rem", opacity: 0.6, display: "block", marginBottom: "0.1rem" }}>إلى تاريخ:</span>
+                    <DualCalendarPicker value={toDate} onChange={(val) => { setToDate(val); fetchLedger(fromDate, val); }} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.4rem", flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }} onClick={() => {
+                    const today = getTodayString?.() || new Date().toISOString().split("T")[0];
+                    setFromDate(today); setToDate(today); fetchLedger(today, today);
+                  }}>اليوم</button>
+                  <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }} onClick={() => {
+                    const today = getTodayString?.() || new Date().toISOString().split("T")[0];
+                    const firstDay = today.slice(0, 8) + "01";
+                    setFromDate(firstDay); setToDate(today); fetchLedger(firstDay, today);
+                  }}>هذا الشهر</button>
+                  <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }} onClick={() => {
+                    const today = getTodayString?.() || new Date().toISOString().split("T")[0];
+                    const firstDay = today.slice(0, 4) + "-01-01";
+                    setFromDate(firstDay); setToDate(today); fetchLedger(firstDay, today);
+                  }}>هذا العام</button>
+                  <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem" }} onClick={() => {
+                    setFromDate(""); setToDate(""); fetchLedger("", "");
+                  }}>الكل</button>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: "bold", marginBottom: "0.25rem", display: "block" }}>البحث في الحسابات أو البيان</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="مثال: ديزل، عمال، إيجار..."
+                  value={filterAccountQuery}
+                  onChange={(e) => setFilterAccountQuery(e.target.value)}
+                  style={{ fontSize: "0.85rem", padding: "0.55rem 0.75rem" }}
+                />
+                {filterAccountQuery && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    style={{ fontSize: "0.7rem", padding: "0.1rem 0.4rem", marginTop: "0.25rem", color: "#ef4444" }}
+                    onClick={() => setFilterAccountQuery("")}
+                  >✕ مسح البحث</button>
+                )}
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: "bold", marginBottom: "0.25rem", display: "block" }}>تصفية بحساب معين</label>
+                <select
+                  className="form-control"
+                  value={filterAccountCode}
+                  onChange={(e) => setFilterAccountCode(e.target.value)}
+                  style={{ fontSize: "0.85rem", padding: "0.55rem" }}
+                >
+                  <option value="">كل الحسابات</option>
+                  <optgroup label="المصاريف">
+                    {accounts.filter(a => a.accountType === "expense").sort((a, b) => a.accountCode.localeCompare(b.accountCode)).map(a => (
+                      <option key={a.accountCode} value={a.accountCode}>{a.accountCode} — {a.accountName}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: "bold", marginBottom: "0.25rem", display: "block" }}>خيارات إضافية</label>
+                <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                  <select className="form-control" style={{ width: "auto", maxWidth: "140px", fontSize: "0.8rem" }} value={filterCashAccount} onChange={(e) => setFilterCashAccount(e.target.value)}>
+                    <option value="">كل الخزائن</option>
+                    {cashAccounts.map(a => (
+                      <option key={a.accountCode} value={a.accountCode}>{a.accountName}</option>
+                    ))}
+                  </select>
+                  <select className="form-control" style={{ width: "auto", maxWidth: "110px", fontSize: "0.8rem" }} value={ledgerBranchFilter} onChange={(e) => { const v = e.target.value; setLedgerBranchFilter(v); if (v && ledgerCostCenterFilter && !ledgerCostCenterFilter.startsWith(`CC-${v}`)) setLedgerCostCenterFilter(""); }}>
+                    <option value="">كل الفروع</option>
+                    {branches.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                  </select>
+                  <select className="form-control" style={{ width: "auto", maxWidth: "150px", fontSize: "0.8rem" }} value={ledgerCostCenterFilter} onChange={(e) => setLedgerCostCenterFilter(e.target.value)}>
+                    <option value="">كل المراكز</option>
+                    {costCenters.filter(c => {
+                      if (c.type !== "booking" && c.type !== "administrative") return false;
+                      if (ledgerBranchFilter && !c.code.startsWith(`CC-${ledgerBranchFilter}`)) return false;
+                      return true;
+                    }).map(c => (
+                      <option key={c.code} value={c.code}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
+
+          {(filterAccountCode || filterAccountQuery || ledgerCostCenterFilter || fromDate !== toDate) && (
+            <div className="glass" style={{ padding: "1rem", borderRadius: "12px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.2)", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+              <div>
+                <h4 style={{ margin: 0, color: "#d97706", fontSize: "1rem", fontWeight: "bold" }}>📊 ملخص التقرير</h4>
+                <p style={{ margin: "0.25rem 0 0", fontSize: "0.82rem", opacity: 0.85 }}>
+                  {filterAccountCode ? `حساب: ${acctName(filterAccountCode)} ` : ""}{filterAccountQuery ? `بحث: "${filterAccountQuery}" ` : ""}{ledgerCostCenterFilter ? `مركز تكلفة: ${ledgerCostCenterFilter} ` : ""}
+                  للفترة من <span style={{ direction: "ltr", display: "inline-block" }}>{fromDate || "البداية"}</span> إلى <span style={{ direction: "ltr", display: "inline-block" }}>{toDate || "النهاية"}</span>
+                </p>
+              </div>
+              <div style={{ textAlign: "left" }}>
+                <span style={{ fontSize: "0.75rem", opacity: 0.7, display: "block" }}>إجمالي المصروف المطابق</span>
+                <span style={{ fontSize: "1.6rem", fontWeight: "900", color: "#d97706" }}>
+                  {formatCurrency(filteredLedger.filter(e => e.entryType === "expense").reduce((s, e) => s + e.amount, 0))}
+                </span>
+              </div>
+            </div>
+          )}
 
           {editEntry && (
             <div className="inv-form" style={{ marginBottom: "1rem" }}>
@@ -1184,7 +1299,7 @@ export default function ExpensesView() {
                       }),
                     });
                     const d = await r.json();
-                    if (d.success) { setSuccessMsg(d.message); fetchLedger(filterDate); } else setErrorMsg(d.error);
+                    if (d.success) { setSuccessMsg(d.message); fetchLedger(fromDate, toDate); } else setErrorMsg(d.error);
                   } catch { setErrorMsg("خطأ"); }
                   setBulkProcessing(false);
                 }}>{bulkProcessing ? "جاري..." : "🧹 تنفيذ"}</button>
@@ -1251,7 +1366,7 @@ export default function ExpensesView() {
                   const d = await r.json();
                   if (d.success) ok++;
                 }
-                if (ok > 0) { setSuccessMsg(`تم ضبط ${ok} خزينة`); setAdjustBalances({}); fetchLedger(filterDate); }
+                if (ok > 0) { setSuccessMsg(`تم ضبط ${ok} خزينة`); setAdjustBalances({}); fetchLedger(fromDate, toDate); }
                 else setErrorMsg("فشل الضبط");
               } catch { setErrorMsg("خطأ"); }
               setAdjustSubmitting(false);
